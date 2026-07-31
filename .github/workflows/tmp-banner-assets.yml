@@ -20,6 +20,7 @@ jobs:
           mkdir -p tmp-banner-assets
           fetch() { curl -A 'Mozilla/5.0' -L --fail --retry 3 --connect-timeout 20 "$1" -o "$2"; }
           fetch 'https://static.opayweb.com/static/pos-tool-29c31107e74e0312ad5b2dd2ae47840c.png' tmp-banner-assets/opay.png
+          fetch 'https://www.shelaf.net/wp-content/uploads/2025/03/OPay-POS.webp' tmp-banner-assets/opay-real.webp
           fetch 'https://www.moniepoint.com/pos/smart.png' tmp-banner-assets/moniepoint.png
           fetch 'https://www.peakmilk.com.ng/wp-content/uploads/2022/03/Peak-FullCream-150g-Tin-e1754669118736.png' tmp-banner-assets/peak.png
       - name: Commit exact assets
