@@ -22,32 +22,40 @@ jobs:
             'maggi.png': 'https://www.nestle-cwa.com/sites/g/files/pydnoa346/files/asset-library/publishingimages/brands/maggi%20cube-regular%20ehp%20eng%201.png',
             'dettol-liquid.png': 'https://www.dettol.com.ng/static/4b9e3b315aba7242ac565d5abf45769d/ead7f/dettol-asl-med-0_165.png',
             'dettol-soap.png': 'https://www.dettol.com.ng/static/de70c7ff36ebb491b6b4baee05e14820/3aca5/dettol-original-bar-110g.png',
+            'coca-cola.png': 'https://www.coca-cola.com/content/dam/onexp/ng/home-image/brands/coca-cola-brand-page/coca-cola-original/Coca%20Cola%20Original%20Taste_Pack%20Shot.jpg',
             'moniepoint-logo.png': 'https://eu-west-2.graphassets.com/AxQ8YTi9LTCrOeR0pPuwfz/cmk3yx2dd15il07lco5cye9zy',
           }
           pathlib.Path('assets').mkdir(exist_ok=True)
           failures=[]
+          headers={'User-Agent':'Mozilla/5.0','Accept':'image/avif,image/webp,image/png,image/*,*/*;q=0.8'}
           for name, original in assets.items():
+              candidates=[original]
               transport_path = original.removeprefix('https://').removeprefix('http://')
-              proxy = 'https://images.weserv.nl/?url=' + urllib.parse.quote(transport_path, safe='/:') + '&output=png'
-              try:
-                  req = urllib.request.Request(proxy, headers={'User-Agent':'Mozilla/5.0','Accept':'image/avif,image/webp,image/png,image/*,*/*;q=0.8'})
-                  with urllib.request.urlopen(req, timeout=90) as r:
-                      data = r.read()
-                      ctype = r.headers.get('Content-Type')
-                  if len(data) < 1000:
-                      raise RuntimeError(f'suspiciously small download ({len(data)} bytes)')
-                  pathlib.Path('assets', name).write_bytes(data)
-                  print('OK', name, len(data), ctype, proxy)
-              except Exception as exc:
-                  failures.append((name, str(exc), proxy))
-                  print('FAIL', name, exc, proxy)
-          if len(list(pathlib.Path('assets').glob('*'))) < 5:
+              candidates.append('https://images.weserv.nl/?url=' + urllib.parse.quote(transport_path, safe='/:') + '&output=png')
+              success=False
+              for candidate in candidates:
+                  try:
+                      req = urllib.request.Request(candidate, headers=headers)
+                      with urllib.request.urlopen(req, timeout=90) as r:
+                          data = r.read(); ctype=r.headers.get('Content-Type')
+                      if len(data) < 1000:
+                          raise RuntimeError(f'suspiciously small download ({len(data)} bytes)')
+                      pathlib.Path('assets', name).write_bytes(data)
+                      print('OK', name, len(data), ctype, candidate)
+                      success=True
+                      break
+                  except Exception as exc:
+                      print('TRY_FAIL', name, exc, candidate)
+              if not success:
+                  failures.append(name)
+                  print('FAIL', name)
+          if len(list(pathlib.Path('assets').glob('*'))) < 6:
               raise RuntimeError(f'Too few assets downloaded: {failures}')
           PY
           file assets/*
       - name: Upload asset bundle
         uses: actions/upload-artifact@v4
         with:
-          name: kings-world-banner-v2-assets
+          name: kings-world-banner-v2-assets-plus
           path: assets
           if-no-files-found: error
