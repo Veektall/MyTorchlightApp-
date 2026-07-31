@@ -13,14 +13,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p assets
-          fetch() { curl -A 'Mozilla/5.0' -L --fail --retry 3 --connect-timeout 30 "$1" -o "$2"; }
-          fetch 'https://camo.githubusercontent.com/3edf9edae5aa24196d95b58064416678c94fa43c96ac029580a03e4b518d1b76/68747470733a2f2f7777772e6e6573746c652d6377612e636f6d2f73697465732f672f66696c65732f7079646e6f613334362f66696c65732f7374796c65732f66756c6c5f77696474685f696d6167655f31393230783739355f2f7075626c69632f676f6c64656e2d6d6f726e2d383030783830302e706e672e776562703f69746f6b3d4e345a4e68433948' assets/golden-morn.webp
-          fetch 'https://camo.githubusercontent.com/df0a758007b0185344e23564dc6da7b394528574ca0115feef58dba2f45250d2/68747470733a2f2f7777772e6d696c6f2e636f6d2e6e672f73697465732f64656661756c742f66696c65732f323032342d30382f4d494c4f5f4163746976476f5f383030675f4368616d705f536f66747061636b5f41314e315f656e4e475f6f70742e706e67' assets/milo.png
-          fetch 'https://camo.githubusercontent.com/cb10fab944a52f49aff29a8197b42ff64cd57e10b4dcbdc41f580e4b7e33324c/68747470733a2f2f696e646f6d69652e6e672f77702d636f6e74656e742f75706c6f6164732f323032332f30342f436869636b656e2d3730672d7573652e706e67' assets/indomie.png
-          fetch 'https://camo.githubusercontent.com/e1c8f73a7be4eba1f1b9fcc73db927b2d90fedced62f6e8b8d6ce523f0c63439/68747470733a2f2f7777772e6e6573746c652d6377612e636f6d2f73697465732f672f66696c65732f7079646e6f613334362f66696c65732f61737365742d6c6962726172792f7075626c697368696e67696d616765732f6272616e64732f6d61676769253230637562652d726567756c6172253230656870253230656e67253230312e706e67' assets/maggi.png
-          fetch 'https://camo.githubusercontent.com/8c7b7daa8b729b6e1feba10c98807b54576a709c39f9452cf0f3a2122a54a5b8/68747470733a2f2f7777772e646574746f6c2e636f6d2e6e672f7374617469632f34623965336233313561626137323432616335363564356162663435373639642f65616437662f646574746f6c2d61736c2d6d65642d305f3136352e706e67' assets/dettol-liquid.png
-          fetch 'https://camo.githubusercontent.com/f8c2f42ee5ea501dd08aed48c5d6e1cc8c35983629810ada6ec2109c5f33e5e6/68747470733a2f2f7777772e646574746f6c2e636f6d2e6e672f7374617469632f64653730633766663336656262343931623662346261656530356531343832302f33616361352f646574746f6c2d6f726967696e616c2d6261722d313130672e706e67' assets/dettol-soap.png
-          fetch 'https://camo.githubusercontent.com/3ebf1a2f455b17c001f96274d3fd29ffa3e5dd39e57a625041d0bd2fa9ef81e2/68747470733a2f2f65752d776573742d322e67726170686173736574732e636f6d2f41785138595469394c5443724f65523070507577667a2f636d6b3379783264643135696c30376c636f35637965397a79' assets/moniepoint-logo.png
+          python - <<'PY'
+          import pathlib, urllib.parse, urllib.request
+          assets = {
+            'golden-morn.png': 'https://www.nestle-cwa.com/sites/g/files/pydnoa346/files/styles/full_width_image_1920x795_/public/golden-morn-800x800.png.webp?itok=N4ZNhC9H',
+            'milo.png': 'https://www.milo.com.ng/sites/default/files/2024-08/MILO_ActivGo_800g_Champ_Softpack_A1N1_enNG_opt.png',
+            'indomie.png': 'https://indomie.ng/wp-content/uploads/2023/04/Chicken-70g-use.png',
+            'maggi.png': 'https://www.nestle-cwa.com/sites/g/files/pydnoa346/files/asset-library/publishingimages/brands/maggi%20cube-regular%20ehp%20eng%201.png',
+            'dettol-liquid.png': 'https://www.dettol.com.ng/static/4b9e3b315aba7242ac565d5abf45769d/ead7f/dettol-asl-med-0_165.png',
+            'dettol-soap.png': 'https://www.dettol.com.ng/static/de70c7ff36ebb491b6b4baee05e14820/3aca5/dettol-original-bar-110g.png',
+            'moniepoint-logo.png': 'https://eu-west-2.graphassets.com/AxQ8YTi9LTCrOeR0pPuwfz/cmk3yx2dd15il07lco5cye9zy',
+          }
+          pathlib.Path('assets').mkdir(exist_ok=True)
+          for name, original in assets.items():
+              proxy = 'https://images.weserv.nl/?url=' + urllib.parse.quote(original, safe='') + '&output=png'
+              req = urllib.request.Request(proxy, headers={'User-Agent':'Mozilla/5.0','Accept':'image/avif,image/webp,image/png,image/*,*/*;q=0.8'})
+              with urllib.request.urlopen(req, timeout=90) as r:
+                  data = r.read()
+              if len(data) < 1000:
+                  raise RuntimeError(f'{name}: suspiciously small download ({len(data)} bytes)')
+              pathlib.Path('assets', name).write_bytes(data)
+              print(name, len(data), r.headers.get('Content-Type'))
+          PY
           file assets/*
       - name: Upload asset bundle
         uses: actions/upload-artifact@v4
