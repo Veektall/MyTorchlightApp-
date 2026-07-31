@@ -1,0 +1,16 @@
+name: Temporary Export Banner Assets 3
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-banner-assets-3
+          path: tmp-banner-assets
+          if-no-files-found: error
