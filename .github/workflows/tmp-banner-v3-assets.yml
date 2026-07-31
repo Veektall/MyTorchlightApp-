@@ -1,0 +1,23 @@
+name: Temporary Export Banner V3 Assets
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  export-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download public design assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://moniepoint.com/pos/smart-t.png' -o assets/moniepoint-front.png
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' 'https://waziri.ng/wp-content/uploads/2023/12/Softwave-Jumbo-Toilet-Tissue-Paper-x-12-rolls-1.jpg' -o assets/softwave-tissue.jpg
+          file assets/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kings-world-banner-v3-assets
+          path: assets
+          if-no-files-found: error
