@@ -25,15 +25,24 @@ jobs:
             'moniepoint-logo.png': 'https://eu-west-2.graphassets.com/AxQ8YTi9LTCrOeR0pPuwfz/cmk3yx2dd15il07lco5cye9zy',
           }
           pathlib.Path('assets').mkdir(exist_ok=True)
+          failures=[]
           for name, original in assets.items():
-              proxy = 'https://images.weserv.nl/?url=' + urllib.parse.quote(original, safe='') + '&output=png'
-              req = urllib.request.Request(proxy, headers={'User-Agent':'Mozilla/5.0','Accept':'image/avif,image/webp,image/png,image/*,*/*;q=0.8'})
-              with urllib.request.urlopen(req, timeout=90) as r:
-                  data = r.read()
-              if len(data) < 1000:
-                  raise RuntimeError(f'{name}: suspiciously small download ({len(data)} bytes)')
-              pathlib.Path('assets', name).write_bytes(data)
-              print(name, len(data), r.headers.get('Content-Type'))
+              transport_path = original.removeprefix('https://').removeprefix('http://')
+              proxy = 'https://images.weserv.nl/?url=' + urllib.parse.quote(transport_path, safe='/:') + '&output=png'
+              try:
+                  req = urllib.request.Request(proxy, headers={'User-Agent':'Mozilla/5.0','Accept':'image/avif,image/webp,image/png,image/*,*/*;q=0.8'})
+                  with urllib.request.urlopen(req, timeout=90) as r:
+                      data = r.read()
+                      ctype = r.headers.get('Content-Type')
+                  if len(data) < 1000:
+                      raise RuntimeError(f'suspiciously small download ({len(data)} bytes)')
+                  pathlib.Path('assets', name).write_bytes(data)
+                  print('OK', name, len(data), ctype, proxy)
+              except Exception as exc:
+                  failures.append((name, str(exc), proxy))
+                  print('FAIL', name, exc, proxy)
+          if len(list(pathlib.Path('assets').glob('*'))) < 5:
+              raise RuntimeError(f'Too few assets downloaded: {failures}')
           PY
           file assets/*
       - name: Upload asset bundle
