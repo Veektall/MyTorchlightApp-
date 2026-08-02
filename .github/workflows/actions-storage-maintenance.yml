@@ -1,0 +1,73 @@
+name: Actions storage maintenance
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  maintain:
+    if: >-
+      github.actor == github.repository_owner &&
+      (startsWith(github.event.issue.title, 'actions-storage-audit:') ||
+       startsWith(github.event.issue.title, 'actions-storage-cleanup:'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Audit or clean Actions storage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"; mode=audit
+          [[ "$ISSUE_TITLE" == actions-storage-cleanup:* ]] && mode=cleanup
+          list_storage() {
+            gh api --paginate "/repos/$repo/actions/artifacts?per_page=100" --jq '.artifacts[]? | [.id,.name,.size_in_bytes,.created_at,.expired] | @tsv' > /tmp/artifacts.tsv
+            gh api --paginate "/repos/$repo/actions/caches?per_page=100" --jq '.actions_caches[]? | [.id,.key,.size_in_bytes,.created_at,.last_accessed_at] | @tsv' > /tmp/caches.tsv
+          }
+          total_bytes() { awk -F '\t' '{s += $3} END {printf "%.0f", s+0}' "$1"; }
+          count_rows() { awk 'END {print NR+0}' "$1"; }
+          human() { numfmt --to=iec-i --suffix=B "${1:-0}"; }
+          list_storage
+          before_artifacts_bytes=$(total_bytes /tmp/artifacts.tsv); before_caches_bytes=$(total_bytes /tmp/caches.tsv)
+          before_artifacts_count=$(count_rows /tmp/artifacts.tsv); before_caches_count=$(count_rows /tmp/caches.tsv)
+          deleted_artifacts=0; deleted_caches=0; deleted_artifact_bytes=0; deleted_cache_bytes=0
+          if [[ "$mode" == cleanup ]]; then
+            artifact_days=$(printf '%s' "$ISSUE_BODY" | sed -nE 's/.*artifact_days=([0-9]+).*/\1/p' | head -1); artifact_days=${artifact_days:-7}
+            delete_all=false; printf '%s' "$ISSUE_BODY" | grep -qi 'delete_all_artifacts=true' && delete_all=true
+            cutoff=$(date -u -d "$artifact_days days ago" +%s)
+            while IFS=$'\t' read -r id name size created expired; do
+              [[ -z "${id:-}" ]] && continue; created_epoch=$(date -u -d "$created" +%s)
+              if [[ "$delete_all" == true || "$expired" == true || "$created_epoch" -lt "$cutoff" ]]; then
+                gh api --method DELETE "/repos/$repo/actions/artifacts/$id"
+                deleted_artifacts=$((deleted_artifacts + 1)); deleted_artifact_bytes=$((deleted_artifact_bytes + size))
+              fi
+            done < /tmp/artifacts.tsv
+            while IFS=$'\t' read -r id key size created accessed; do
+              [[ -z "${id:-}" ]] && continue; gh api --method DELETE "/repos/$repo/actions/caches/$id"
+              deleted_caches=$((deleted_caches + 1)); deleted_cache_bytes=$((deleted_cache_bytes + size))
+            done < /tmp/caches.tsv
+          fi
+          list_storage
+          after_artifacts_bytes=$(total_bytes /tmp/artifacts.tsv); after_caches_bytes=$(total_bytes /tmp/caches.tsv)
+          after_artifacts_count=$(count_rows /tmp/artifacts.tsv); after_caches_count=$(count_rows /tmp/caches.tsv)
+          cat > /tmp/report.md <<EOF
+          **Actions storage $mode completed for \`$repo\`.**
+
+          | Storage | Before | After | Deleted |
+          |---|---:|---:|---:|
+          | Artifacts | $before_artifacts_count / $(human "$before_artifacts_bytes") | $after_artifacts_count / $(human "$after_artifacts_bytes") | $deleted_artifacts / $(human "$deleted_artifact_bytes") |
+          | Caches | $before_caches_count / $(human "$before_caches_bytes") | $after_caches_count / $(human "$after_caches_bytes") | $deleted_caches / $(human "$deleted_cache_bytes") |
+
+          Source code, releases, branches, and repository files were not deleted.
+          EOF
+          gh issue comment "$ISSUE_NUMBER" --repo "$repo" --body-file /tmp/report.md
+          gh issue close "$ISSUE_NUMBER" --repo "$repo" --reason completed
