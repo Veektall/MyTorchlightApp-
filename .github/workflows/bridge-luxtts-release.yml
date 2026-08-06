@@ -1,0 +1,63 @@
+name: Bridge LuxTTS Release Asset
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bridge:
+    if: startsWith(github.event.issue.title, 'fluent-luxtts-bridge:')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Parse request
+        id: spec
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          spec=json.loads(os.environ['BODY'])
+          for key in ('tag','file','artifact'):
+              if not spec.get(key): raise SystemExit(f'missing {key}')
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:
+              for key in ('tag','file','artifact'):
+                  f.write(f'{key}={spec[key]}\n')
+          PY
+
+      - name: Download public release asset
+        env:
+          TAG: ${{ steps.spec.outputs.tag }}
+          FILE: ${{ steps.spec.outputs.file }}
+        run: |
+          curl -L --retry 5 --fail "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${FILE}" -o "${FILE}"
+          test -s "${FILE}"
+          ls -lh "${FILE}"
+
+      - name: Upload connector artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.spec.outputs.artifact }}
+          path: ${{ steps.spec.outputs.file }}
+          compression-level: 0
+          retention-days: 1
+
+      - name: Report success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          ARTIFACT: ${{ steps.spec.outputs.artifact }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="Release asset bridged successfully as workflow artifact ${ARTIFACT}. Run ID: ${GITHUB_RUN_ID}."
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="Release-to-artifact bridge failed. Run ID: ${GITHUB_RUN_ID}."
