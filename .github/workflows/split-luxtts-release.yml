@@ -1,0 +1,102 @@
+name: Split LuxTTS Release for Drive
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  split:
+    if: startsWith(github.event.issue.title, 'fluent-luxtts-split:')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Parse request
+        id: spec
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          s=json.loads(os.environ['BODY'])
+          for k in ('tag','file','prefix'):
+              if not s.get(k): raise SystemExit(f'missing {k}')
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:
+              for k in ('tag','file','prefix'): f.write(f'{k}={s[k]}\n')
+          PY
+
+      - name: Download and split
+        env:
+          TAG: ${{ steps.spec.outputs.tag }}
+          FILE: ${{ steps.spec.outputs.file }}
+          PREFIX: ${{ steps.spec.outputs.prefix }}
+        run: |
+          set -euo pipefail
+          curl -L --retry 5 --fail "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${FILE}" -o "$FILE"
+          mkdir chunks
+          split -b 85M -d -a 2 "$FILE" chunks/part-
+          sha256sum "$FILE" > chunks/original.sha256
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          original=Path(os.environ['FILE'])
+          parts=[]
+          for p in sorted(Path('chunks').glob('part-*')):
+              parts.append({'name':p.name,'size':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          manifest={'version':1,'original_name':original.name,'original_size':original.stat().st_size,'original_sha256':hashlib.sha256(original.read_bytes()).hexdigest(),'chunk_size':'85MiB','parts':parts,'reassemble':'cat part-* > '+original.name}
+          Path('chunks/manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          print(json.dumps(manifest,indent=2))
+          PY
+
+      - name: Upload part 00
+        if: hashFiles('chunks/part-00') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-00', path: chunks/part-00, compression-level: 0, retention-days: 1}
+      - name: Upload part 01
+        if: hashFiles('chunks/part-01') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-01', path: chunks/part-01, compression-level: 0, retention-days: 1}
+      - name: Upload part 02
+        if: hashFiles('chunks/part-02') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-02', path: chunks/part-02, compression-level: 0, retention-days: 1}
+      - name: Upload part 03
+        if: hashFiles('chunks/part-03') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-03', path: chunks/part-03, compression-level: 0, retention-days: 1}
+      - name: Upload part 04
+        if: hashFiles('chunks/part-04') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-04', path: chunks/part-04, compression-level: 0, retention-days: 1}
+      - name: Upload part 05
+        if: hashFiles('chunks/part-05') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-05', path: chunks/part-05, compression-level: 0, retention-days: 1}
+      - name: Upload part 06
+        if: hashFiles('chunks/part-06') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-06', path: chunks/part-06, compression-level: 0, retention-days: 1}
+      - name: Upload part 07
+        if: hashFiles('chunks/part-07') != ''
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ steps.spec.outputs.prefix }}-part-07', path: chunks/part-07, compression-level: 0, retention-days: 1}
+      - name: Upload manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.spec.outputs.prefix }}-manifest
+          path: |
+            chunks/manifest.json
+            chunks/original.sha256
+          retention-days: 1
+
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          PREFIX: ${{ steps.spec.outputs.prefix }}
+        run: |
+          if [ "${{ job.status }}" = success ]; then MSG="Split completed for ${PREFIX}. Run ID: ${GITHUB_RUN_ID}."; else MSG="Split failed for ${PREFIX}. Run ID: ${GITHUB_RUN_ID}."; fi
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="$MSG"
