@@ -1,0 +1,77 @@
+name: Build Fluent Offline LuxTTS Core v2
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  core:
+    if: startsWith(github.event.issue.title, 'fluent-luxtts-core-v2:')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Build portable CPU core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/stage/fluent-luxtts-offline"
+          mkdir -p "$ROOT/voice" "$ROOT/output"
+          cp tools/fluent-luxtts-offline/create_prompt.py "$ROOT/"
+          cp tools/fluent-luxtts-offline/generate.py "$ROOT/"
+          cp tools/fluent-luxtts-offline/run.sh "$ROOT/"
+          chmod +x "$ROOT/run.sh"
+          ASSET_URL="$(gh api repos/astral-sh/python-build-standalone/releases/latest --jq '.assets[].browser_download_url' | grep -E 'cpython-3\.11\..*x86_64-unknown-linux-gnu-install_only_stripped\.tar\.gz$' | grep -v freethreaded | head -n1)"
+          curl -L --retry 5 --fail "$ASSET_URL" -o python.tar.gz
+          tar -xzf python.tar.gz -C "$ROOT"
+          PY="$ROOT/python/bin/python3"
+          "$PY" -m ensurepip --upgrade
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          "$PY" -m pip install --find-links https://k2-fsa.github.io/icefall/piper_phonemize.html piper-phonemize
+          "$PY" -m pip install 'numpy<2' onnxruntime soundfile cn2an inflect jieba lhotse pypinyin pydub safetensors 'setuptools<81' 'jsonargparse[signatures]' tqdm vocos urllib3 requests
+          "$PY" -m pip install --no-deps 'git+https://github.com/ysharma3501/LinaCodec.git' 'git+https://github.com/ysharma3501/LuxTTS.git'
+          find "$ROOT/python" -type d -name '__pycache__' -prune -exec rm -rf {} + || true
+          find "$ROOT/python" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete || true
+          find "$ROOT/python" -type d \( -name tests -o -name test \) -prune -exec rm -rf {} + || true
+          rm -rf "$ROOT/python/share/doc" "$ROOT/python/share/man" || true
+          cat > "$ROOT/README.md" <<'EOF'
+          # Fluent Offline LuxTTS Runtime
+
+          Portable Linux x86_64, CPU-only LuxTTS synthesis runtime. It contains a relocatable Python 3.11 environment, CPU PyTorch, exact-transcript voice-prompt creation, and chunked long-form generation. Extract the model component into the same directory. The host requires FFmpeg.
+          EOF
+          "$PY" - <<'PY'
+          import torch, onnxruntime, soundfile, urllib3, requests
+          from zipvoice.tokenizer.tokenizer import EmiliaTokenizer
+          from linacodec.vocoder.vocos import Vocos
+          assert not torch.cuda.is_available()
+          print('core import test:', torch.__version__, onnxruntime.__version__, soundfile.__version__)
+          PY
+          cat > "$ROOT/core-manifest.json" <<'EOF'
+          {"component":"core","version":"1.0.1","python":"3.11","platform":"linux-x86_64","offline":true,"device":"cpu","requires_host_ffmpeg":true}
+          EOF
+          tar -I 'zstd -10 -T0' -cf fluent-luxtts-offline-core.tar.zst -C stage fluent-luxtts-offline
+          sha256sum fluent-luxtts-offline-core.tar.zst > fluent-luxtts-offline-core.tar.zst.sha256
+          ls -lh fluent-luxtts-offline-core.tar.zst
+      - name: Publish core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=fluent-luxtts-offline-v1-public
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --title "Fluent Offline LuxTTS Runtime v1" --notes "Generic CPU-only LuxTTS components. No private voice data."
+          gh release upload "$TAG" fluent-luxtts-offline-core.tar.zst fluent-luxtts-offline-core.tar.zst.sha256 --clobber
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          if [ "${{ job.status }}" = success ]; then MSG="Fluent LuxTTS core v2 built successfully. Run ID: ${GITHUB_RUN_ID}."; else MSG="Fluent LuxTTS core v2 failed. Run ID: ${GITHUB_RUN_ID}."; fi
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="$MSG"
