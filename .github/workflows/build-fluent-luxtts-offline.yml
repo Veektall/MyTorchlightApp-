@@ -1,0 +1,166 @@
+name: Build Fluent Offline LuxTTS Runtime
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build:
+    if: startsWith(github.event.issue.title, 'fluent-luxtts-build:')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up builder Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Parse request
+        id: spec
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          spec=json.loads(os.environ['BODY'])
+          component=spec.get('component')
+          if component not in {'core','model'}:
+              raise SystemExit('component must be core or model')
+          tag=spec.get('tag') or 'fluent-luxtts-offline-v1-public'
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:
+              f.write(f'component={component}\ntag={tag}\n')
+          PY
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd
+          python -m pip install --upgrade pip huggingface_hub
+
+      - name: Build generic core runtime
+        if: steps.spec.outputs.component == 'core'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/stage/fluent-luxtts-offline"
+          mkdir -p "$ROOT/voice" "$ROOT/output"
+          cp tools/fluent-luxtts-offline/create_prompt.py "$ROOT/"
+          cp tools/fluent-luxtts-offline/generate.py "$ROOT/"
+          cp tools/fluent-luxtts-offline/run.sh "$ROOT/"
+          chmod +x "$ROOT/run.sh"
+
+          ASSET_URL="$(gh api repos/astral-sh/python-build-standalone/releases/latest --jq '.assets[].browser_download_url' | grep -E 'cpython-3\.11\..*x86_64-unknown-linux-gnu-install_only_stripped\.tar\.gz$' | grep -v freethreaded | head -n1)"
+          test -n "$ASSET_URL"
+          curl -L --retry 5 --fail "$ASSET_URL" -o python.tar.gz
+          tar -xzf python.tar.gz -C "$ROOT"
+          PY="$ROOT/python/bin/python3"
+          test -x "$PY"
+          "$PY" -m ensurepip --upgrade
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          "$PY" -m pip install --find-links https://k2-fsa.github.io/icefall/piper_phonemize.html piper-phonemize
+          "$PY" -m pip install 'numpy<2' onnxruntime soundfile cn2an inflect jieba lhotse pypinyin pydub safetensors 'setuptools<81' 'jsonargparse[signatures]' tqdm vocos
+          "$PY" -m pip install --no-deps 'git+https://github.com/ysharma3501/LinaCodec.git' 'git+https://github.com/ysharma3501/LuxTTS.git'
+
+          find "$ROOT/python" -type d -name '__pycache__' -prune -exec rm -rf {} + || true
+          find "$ROOT/python" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete || true
+          find "$ROOT/python" -type d \( -name tests -o -name test \) -prune -exec rm -rf {} + || true
+          rm -rf "$ROOT/python/share/doc" "$ROOT/python/share/man" || true
+
+          cat > "$ROOT/README.md" <<'EOF'
+          # Fluent Offline LuxTTS Runtime
+
+          Portable Linux x86_64, CPU-only LuxTTS synthesis runtime. It contains a relocatable Python 3.11 environment, CPU PyTorch, exact-transcript voice-prompt creation, and chunked long-form generation. Extract the model component into the same directory. The host requires FFmpeg, which is already available in the ChatGPT workspace.
+          EOF
+          "$PY" - <<'PY'
+          import torch, onnxruntime, soundfile
+          from zipvoice.tokenizer.tokenizer import EmiliaTokenizer
+          from linacodec.vocoder.vocos import Vocos
+          assert '+cpu' in torch.__version__ or not torch.cuda.is_available()
+          print('core import test:', torch.__version__, onnxruntime.__version__, soundfile.__version__)
+          PY
+          python - <<PY
+          import json, pathlib
+          root=pathlib.Path(r'$ROOT')
+          (root/'core-manifest.json').write_text(json.dumps({
+            'component':'core','version':'1.0','python':'3.11','platform':'linux-x86_64',
+            'offline':True,'device':'cpu','requires_host_ffmpeg':True
+          },indent=2),encoding='utf-8')
+          PY
+          tar -I 'zstd -10 -T0' -cf fluent-luxtts-offline-core.tar.zst -C stage fluent-luxtts-offline
+          sha256sum fluent-luxtts-offline-core.tar.zst > fluent-luxtts-offline-core.tar.zst.sha256
+          ls -lh fluent-luxtts-offline-core.tar.zst
+
+      - name: Build generic model component
+        if: steps.spec.outputs.component == 'model'
+        run: |
+          set -euo pipefail
+          ROOT="$PWD/stage/fluent-luxtts-offline"
+          MODEL="$ROOT/model"
+          mkdir -p "$MODEL/vocoder"
+          python - <<PY
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id='YatharthS/LuxTTS',
+              local_dir=r'$MODEL',
+              allow_patterns=[
+                  'config.json','tokens.txt','text_encoder_int8.onnx','fm_decoder_int8.onnx',
+                  'vocoder/config.yaml','vocoder/vocos.bin'
+              ],
+          )
+          PY
+          test -s "$MODEL/text_encoder_int8.onnx"
+          test -s "$MODEL/fm_decoder_int8.onnx"
+          test -s "$MODEL/vocoder/vocos.bin"
+          rm -rf "$MODEL/.cache"
+          cat > "$ROOT/model-manifest.json" <<'EOF'
+          {
+            "component": "model",
+            "version": "1.0",
+            "engine": "LuxTTS CPU INT8",
+            "model_repo": "YatharthS/LuxTTS",
+            "license": "Apache-2.0",
+            "contains_voice_data": false,
+            "files": ["config.json", "tokens.txt", "text_encoder_int8.onnx", "fm_decoder_int8.onnx", "vocoder/config.yaml", "vocoder/vocos.bin"]
+          }
+          EOF
+          tar -I 'zstd -10 -T0' -cf fluent-luxtts-offline-model.tar.zst -C stage fluent-luxtts-offline
+          sha256sum fluent-luxtts-offline-model.tar.zst > fluent-luxtts-offline-model.tar.zst.sha256
+          ls -lh fluent-luxtts-offline-model.tar.zst
+
+      - name: Publish component as release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ steps.spec.outputs.component }}
+          TAG: ${{ steps.spec.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --title "Fluent Offline LuxTTS Runtime v1" --notes "Generic Apache-licensed CPU-only LuxTTS runtime and model components. No private voice recordings or voice prompts are included."
+          gh release upload "$TAG" "fluent-luxtts-offline-${COMPONENT}.tar.zst" "fluent-luxtts-offline-${COMPONENT}.tar.zst.sha256" --clobber
+
+      - name: Report success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          COMPONENT: ${{ steps.spec.outputs.component }}
+          TAG: ${{ steps.spec.outputs.tag }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="Fluent offline LuxTTS ${COMPONENT} component built successfully and published in release ${TAG}. Run ID: ${GITHUB_RUN_ID}."
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          COMPONENT: ${{ steps.spec.outputs.component }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" -f body="Fluent offline LuxTTS ${COMPONENT} build failed. Run ID: ${GITHUB_RUN_ID}."
