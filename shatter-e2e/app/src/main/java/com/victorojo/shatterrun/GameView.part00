@@ -1,0 +1,140 @@
+package com.victorojo.shatterrun;
+
+import android.content.Context;
+import android.content.res.AssetFileDescriptor;
+import android.graphics.*;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.media.SoundPool;
+import android.os.Build;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.view.Choreographer;
+import android.view.MotionEvent;
+import android.view.View;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
+
+public final class GameView extends View implements Choreographer.FrameCallback, GameModel.Listener {
+    private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path path=new Path();
+    private final GameModel model=new GameModel();
+    private final Random rng=new Random(41431L);
+    private final List<Shard> shards=new ArrayList<>();
+    private final List<Star> stars=new ArrayList<>();
+    private long lastNs=0L;
+    private boolean active=true, paused=false;
+    private int mode=0; // 0 menu, 1 playing, 2 game over
+    private float menuT=0f, flash=0f, shake=0f, toastT=0f;
+    private String toast="";
+    private int tutorialStage=0;
+    private SoundPool sounds;
+    private int sndShot,sndGlass,sndCrystal,sndHit;
+    private MediaPlayer ambient;
+    private Vibrator vibrator;
+
+    private static final class Shard {
+        float x,y,z,vx,vy,vz,life,maxLife,size,rot,vr;
+        int tint;
+    }
+    private static final class Star { float x,y,s,a; }
+
+    public GameView(Context c) {
+        super(c);
+        setFocusable(true);
+        setLayerType(View.LAYER_TYPE_HARDWARE,null);
+        stroke.setStyle(Paint.Style.STROKE);
+        model.setListener(this);
+        for(int i=0;i<70;i++){ Star s=new Star(); s.x=rng.nextFloat(); s.y=rng.nextFloat(); s.s=0.4f+rng.nextFloat()*1.8f; s.a=.1f+rng.nextFloat()*.35f; stars.add(s); }
+        vibrator=(Vibrator)c.getSystemService(Context.VIBRATOR_SERVICE);
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        updateAccessibilityState();
+        initAudio(c);
+        Choreographer.getInstance().postFrameCallback(this);
+    }
+
+    private void initAudio(Context c) {
+        try {
+            AudioAttributes attrs=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+            sounds=new SoundPool.Builder().setMaxStreams(8).setAudioAttributes(attrs).build();
+            sndShot=loadSound("shot.wav"); sndGlass=loadSound("glass.wav"); sndCrystal=loadSound("crystal.wav"); sndHit=loadSound("hit.wav");
+            AssetFileDescriptor afd=getContext().getAssets().openFd("ambient.wav");
+            ambient=new MediaPlayer(); ambient.setDataSource(afd.getFileDescriptor(),afd.getStartOffset(),afd.getLength()); afd.close();
+            ambient.setLooping(true); ambient.setVolume(.42f,.42f); ambient.prepare();
+        } catch(Exception ignored) {}
+    }
+    private int loadSound(String name) throws IOException { AssetFileDescriptor a=getContext().getAssets().openFd(name); int id=sounds.load(a,1); a.close(); return id; }
+
+    public void pauseGame(){ active=false; if(ambient!=null && ambient.isPlaying()) ambient.pause(); }
+    public void resumeGame(){ active=true; if(mode==1 && ambient!=null) try{ambient.start();}catch(Exception ignored){} lastNs=0; Choreographer.getInstance().postFrameCallback(this); }
+
+    @Override public void doFrame(long frameTimeNanos) {
+        if(!active) return;
+        if(lastNs==0) lastNs=frameTimeNanos;
+        float dt=Math.min(.04f,(frameTimeNanos-lastNs)/1_000_000_000f); lastNs=frameTimeNanos;
+        menuT+=dt;
+        if(mode==1 && !paused) model.update(dt);
+        updateFx(dt);
+        invalidate();
+        Choreographer.getInstance().postFrameCallback(this);
+    }
+
+    private void updateFx(float dt){
+        flash=Math.max(0,flash-dt*2.8f); shake=Math.max(0,shake-dt*5.5f); toastT=Math.max(0,toastT-dt);
+        for(int i=shards.size()-1;i>=0;i--){ Shard s=shards.get(i); s.life-=dt; if(s.life<=0){shards.remove(i);continue;} s.x+=s.vx*dt; s.y+=s.vy*dt; s.z+=s.vz*dt; s.vy-=2.1f*dt; s.rot+=s.vr*dt; }
+    }
+
+    @Override protected void onDraw(Canvas c) {
+        super.onDraw(c);
+        float w=getWidth(),h=getHeight();
+        if(w<=0||h<=0)return;
+        int save=c.save();
+        if(shake>0){float mag=Math.min(w,h)*.012f*shake; c.translate((rng.nextFloat()-.5f)*mag,(rng.nextFloat()-.5f)*mag);}
+        drawWorld(c,w,h);
+        c.restoreToCount(save);
+        if(mode==0) drawMenu(c,w,h);
+        else drawHud(c,w,h);
+        if(flash>0){p.setStyle(Paint.Style.FILL);p.setColor(Color.argb((int)(flash*95),255,250,245));c.drawRect(0,0,w,h,p);}
+    }
+
+    private int[] phaseColors(){
+        float z=model.cameraZ;
+        int phase=((int)(z/62f))%4;
+        if(mode==0) phase=0;
+        switch(phase){
+            case 1:return new int[]{Color.rgb(7,37,68),Color.rgb(8,90,125),Color.rgb(10,20,43),Color.rgb(31,112,144)};
+            case 2:return new int[]{Color.rgb(19,65,68),Color.rgb(103,137,112),Color.rgb(222,196,170),Color.rgb(28,90,94)};
+            case 3:return new int[]{Color.rgb(16,27,49),Color.rgb(45,111,141),Color.rgb(242,172,83),Color.rgb(38,72,97)};
+            default:return new int[]{Color.rgb(205,245,238),Color.rgb(238,250,249),Color.rgb(235,206,225),Color.rgb(154,229,212)};
+        }
+    }
+
+    private void drawWorld(Canvas c,float w,float h){
+        int[] col=phaseColors();
+        LinearGradient bg=new LinearGradient(0,0,0,h,col[0],col[1],Shader.TileMode.CLAMP); p.setShader(bg);p.setStyle(Paint.Style.FILL);c.drawRect(0,0,w,h,p);p.setShader(null);
+        float horizon=h*.49f;
+        // Soft atmospheric glow at vanishing point.
+        RadialGradient glow=new RadialGradient(w*.5f,horizon,Math.max(w,h)*.55f,Color.argb(150,255,255,255),Color.argb(0,255,255,255),Shader.TileMode.CLAMP);p.setShader(glow);c.drawRect(0,0,w,h,p);p.setShader(null);
+        for(Star s:stars){p.setColor(Color.argb((int)(255*s.a),255,255,255));c.drawCircle(s.x*w,s.y*h*.62f,s.s,p);}
+        drawCorridor(c,w,h,horizon,col);
+        if(mode!=0){
+            ArrayList<GameModel.Obj> list=new ArrayList<>(model.objects); Collections.sort(list,new Comparator<GameModel.Obj>(){public int compare(GameModel.Obj a,GameModel.Obj b){return Float.compare(b.z,a.z);}});
+            for(GameModel.Obj o:list) if(o.alive) drawObject(c,w,h,horizon,o,col);
+            for(GameModel.Shot s:model.shots) if(s.alive) drawShot(c,w,h,horizon,s);
+            for(Shard s:shards) drawShard(c,w,h,horizon,s);
+        } else {
+            // Menu still-life geometry.
+            drawMenuGeometry(c,w,h,horizon);
+        }
+    }
+
+    private float scaleAt(float depth,float w,float h){ return Math.min(w,h)*1.62f/Math.max(depth,1.0f); }
+    private PointF proj(float x,float y,float z,float w,float h,float horizon){
+        float depth=z-model.cameraZ; float s=scaleAt(depth,w,h);
