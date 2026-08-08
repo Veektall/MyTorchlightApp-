@@ -50,46 +50,47 @@ TOP_Y=$((H/100))
 PAUSE_X=$((W*95/100))
 PAUSE_Y=$((H*8/100))
 
-# Menu -> playing.
+# Start, then immediately freeze before the slow UIAutomator capture.
 adb shell input tap "$CX" "$CY"
-sleep 0.8
-dump_state 02_playing
-assert_state e2e-artifacts/02_playing.xml 'state playing'
-assert_state e2e-artifacts/02_playing.xml 'balls 25'
-
-# Centerline shot collects opening crystal: 25 - 1 + 3 = 27.
-adb shell input tap "$CX" "$AIM_Y"
-sleep 0.9
-dump_state 03_crystal
-assert_state e2e-artifacts/03_crystal.xml 'state playing'
-assert_state e2e-artifacts/03_crystal.xml 'crystals 1'
-assert_state e2e-artifacts/03_crystal.xml 'balls 27'
-
-# Pause and resume using the real canvas hit target.
+sleep 0.15
 adb shell input tap "$PAUSE_X" "$PAUSE_Y"
-sleep 0.4
-dump_state 04_paused
-assert_state e2e-artifacts/04_paused.xml 'state paused'
-adb shell input tap "$CX" "$CY"
-sleep 0.4
-dump_state 05_resumed
-assert_state e2e-artifacts/05_resumed.xml 'state playing'
+sleep 0.15
+dump_state 02_started_paused
+assert_state e2e-artifacts/02_started_paused.xml 'state paused'
+assert_state e2e-artifacts/02_started_paused.xml 'balls 25'
+assert_state e2e-artifacts/02_started_paused.xml 'crystals 0'
 
-# Exhaust all balls quickly with steep upward misses. One adb shell keeps this fast
-# enough that the player cannot reach the first dangerous obstacle during the loop.
+# Resume and fire a centerline shot. Pause again before snapshotting so later
+# obstacles cannot alter the reward while UIAutomator spends several seconds dumping.
+adb shell input tap "$CX" "$CY"
+adb shell input tap "$CX" "$AIM_Y"
+sleep 0.85
+adb shell input tap "$PAUSE_X" "$PAUSE_Y"
+sleep 0.15
+dump_state 03_crystal_paused
+assert_state e2e-artifacts/03_crystal_paused.xml 'state paused'
+assert_state e2e-artifacts/03_crystal_paused.xml 'crystals 1'
+assert_state e2e-artifacts/03_crystal_paused.xml 'balls 27'
+
+# This tap resumes. Prove resumed gameplay by consuming all 27 balls with steep
+# upward misses in one adb shell session, before the first dangerous obstacle arrives.
+adb shell input tap "$CX" "$CY"
 adb shell "i=0; while [ \$i -lt 27 ]; do input tap $CX $TOP_Y; i=\$((i+1)); done"
-sleep 4
-dump_state 06_gameover
-assert_state e2e-artifacts/06_gameover.xml 'state game over'
-assert_state e2e-artifacts/06_gameover.xml 'balls 0'
+sleep 2.5
+dump_state 04_gameover
+assert_state e2e-artifacts/04_gameover.xml 'state game over'
+assert_state e2e-artifacts/04_gameover.xml 'balls 0'
+assert_state e2e-artifacts/04_gameover.xml 'crystals 1'
 
-# Game-over tap resets and immediately starts a fresh run.
+# Restart and immediately pause before the state capture.
 adb shell input tap "$CX" "$CY"
-sleep 0.6
-dump_state 07_restart
-assert_state e2e-artifacts/07_restart.xml 'state playing'
-assert_state e2e-artifacts/07_restart.xml 'balls 25'
-assert_state e2e-artifacts/07_restart.xml 'crystals 0'
+sleep 0.15
+adb shell input tap "$PAUSE_X" "$PAUSE_Y"
+sleep 0.15
+dump_state 05_restart_paused
+assert_state e2e-artifacts/05_restart_paused.xml 'state paused'
+assert_state e2e-artifacts/05_restart_paused.xml 'balls 25'
+assert_state e2e-artifacts/05_restart_paused.xml 'crystals 0'
 
 adb shell pidof "$PKG" > e2e-artifacts/pid.txt
 adb logcat -d > e2e-artifacts/logcat.txt
@@ -98,5 +99,5 @@ if grep -E 'FATAL EXCEPTION|Process: com\.victorojo\.shatterrun.*FATAL' e2e-arti
   exit 1
 fi
 
-printf 'PASS\nmenu -> playing -> crystal -> pause -> resume -> gameover -> restart\n' > e2e-artifacts/result.txt
+printf 'PASS\nmenu -> start -> pause -> resume -> crystal +3 -> pause -> resume -> gameover -> restart\n' > e2e-artifacts/result.txt
 cat e2e-artifacts/result.txt
