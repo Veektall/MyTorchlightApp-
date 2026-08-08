@@ -1,0 +1,58 @@
+            float dx=s.x-o.x, dy=s.y-o.y;
+            boolean hit;
+            if(o.type==TYPE_CRYSTAL || o.type==TYPE_ORB) hit=dx*dx+dy*dy < (o.w*0.75f)*(o.w*0.75f);
+            else if(o.type==TYPE_RING) {
+                float rr=(float)Math.sqrt(dx*dx+dy*dy); hit=rr>o.w*0.26f && rr<o.w*0.62f;
+            } else hit=Math.abs(dx) < o.w*0.58f && Math.abs(dy) < o.h*0.58f;
+            if(!hit) continue;
+            s.alive=false; o.alive=false;
+            if(o.type==TYPE_CRYSTAL || o.type==TYPE_ORB) {
+                int reward=o.reward<=0?3:o.reward;
+                balls+=reward; crystals++; combo++;
+                if(crystals%10==0) { multiplier=Math.min(5,multiplier+1); balls+=5; }
+                if(listener!=null) listener.onCrystal(o,reward);
+            } else {
+                combo++;
+                if(listener!=null) listener.onShatter(o);
+            }
+            return;
+        }
+    }
+
+    private void finishIfEmpty() {
+        if(balls<=0 && shots.isEmpty()) {
+            gameOver=true; running=false;
+            if(listener!=null) listener.onGameOver();
+        }
+    }
+
+    private void spawnPattern(float z) {
+        int phase=((int)(z/48f))%4;
+        int pat=rng.nextInt(6);
+        if(pat==0) {
+            Obj g=add(TYPE_GLASS,0f,0f,z,3.0f,3.6f); g.dangerous=true;
+            Obj c=add(TYPE_CRYSTAL,(rng.nextBoolean()? -2.2f:2.2f),-0.3f,z+4f,0.75f,1.6f); c.reward=3;
+            nextSpawnZ+=10f;
+        } else if(pat==1) {
+            for(int i=-1;i<=1;i++) { Obj c=add(TYPE_CRYSTAL,i*2.05f,-0.25f,z+i%2*0.7f,0.72f,1.5f); c.reward=3; }
+            nextSpawnZ+=11f;
+        } else if(pat==2) {
+            Obj bar=add(TYPE_BAR,0f,0f,z,5.6f,0.42f); bar.dangerous=true; bar.spin=(rng.nextBoolean()?1:-1)*(0.7f+phase*0.15f);
+            nextSpawnZ+=12f;
+        } else if(pat==3) {
+            Obj orb=add(TYPE_ORB,(rng.nextFloat()-0.5f)*4.0f,(rng.nextFloat()-0.5f)*1.2f,z,0.95f,0.95f); orb.reward=3;
+            Obj g1=add(TYPE_GLASS,-2.5f,0f,z+4f,1.6f,3.7f); g1.dangerous=true;
+            Obj g2=add(TYPE_GLASS,2.5f,0f,z+4f,1.6f,3.7f); g2.dangerous=true;
+            nextSpawnZ+=13f;
+        } else if(pat==4) {
+            Obj ring=add(TYPE_RING,0f,0f,z,4.0f,4.0f); ring.spin=0.35f;
+            Obj c=add(TYPE_CRYSTAL,0f,0f,z+1.0f,0.78f,1.6f); c.reward=3;
+            nextSpawnZ+=12f;
+        } else {
+            float gap=(rng.nextBoolean()?-1:1)*1.8f;
+            Obj g=add(TYPE_GLASS,-gap,0f,z,2.4f,3.8f); g.dangerous=true;
+            Obj c=add(TYPE_CRYSTAL,gap,-0.2f,z+2f,0.78f,1.6f); c.reward=3;
+            nextSpawnZ+=10f;
+        }
+    }
+}
