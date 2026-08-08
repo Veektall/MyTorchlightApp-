@@ -1,0 +1,126 @@
+        return new PointF(w*.5f+x*s,horizon-y*s + (horizon-h*.5f)*.03f);
+    }
+
+    private void drawCorridor(Canvas c,float w,float h,float horizon,int[] col){
+        float phase=((model.cameraZ%8f)/8f);
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(Color.argb(75,255,255,255));
+        path.reset(); path.moveTo(0,h); path.lineTo(w*.5f,horizon); path.lineTo(w,h); path.close(); c.drawPath(path,p);
+        // Side planes
+        p.setColor(Color.argb(45,15,65,78)); path.reset();path.moveTo(0,0);path.lineTo(w*.5f,horizon);path.lineTo(0,h);path.close();c.drawPath(path,p);
+        path.reset();path.moveTo(w,0);path.lineTo(w*.5f,horizon);path.lineTo(w,h);path.close();c.drawPath(path,p);
+        // Receding floor seams
+        stroke.setStrokeWidth(Math.max(1f,w*.0016f)); stroke.setColor(Color.argb(70,255,255,255));
+        for(int i=-5;i<=5;i++){float bx=w*.5f+i*w*.12f;c.drawLine(w*.5f,horizon,bx,h,stroke);}
+        // Cross lines advancing toward player.
+        for(int k=0;k<12;k++){
+            float z=5f + ((k*8f - (model.cameraZ%8f)+80f)%80f);
+            float s=scaleAt(z,w,h); float yy=horizon+2.8f*s;
+            if(yy>horizon&&yy<h){float half=5.2f*s; c.drawLine(w*.5f-half,yy,w*.5f+half,yy,stroke);}
+        }
+        // Architectural pillars repeating.
+        for(int k=0;k<10;k++){
+            float z=8f+((k*11f-(model.cameraZ%11f)+110f)%110f);
+            float s=scaleAt(z,w,h); float ph=3.5f*s,pw=.75f*s;
+            if(s<1||s>Math.max(w,h))continue;
+            p.setColor(Color.argb(80,230,247,246));
+            c.drawRect(w*.5f-5.0f*s,horizon-ph,w*.5f-5.0f*s+pw,horizon+2.8f*s,p);
+            c.drawRect(w*.5f+5.0f*s-pw,horizon-ph,w*.5f+5.0f*s,horizon+2.8f*s,p);
+        }
+    }
+
+    private void drawMenuGeometry(Canvas c,float w,float h,float horizon){
+        float pulse=(float)Math.sin(menuT*.7f)*.06f+1f;
+        drawCrystal2D(c,w*.28f,h*.58f,Math.min(w,h)*.10f*pulse,Color.rgb(76,218,212));
+        drawCrystal2D(c,w*.72f,h*.55f,Math.min(w,h)*.075f,Color.rgb(93,224,214));
+        p.setColor(Color.argb(105,255,255,255)); c.drawRect(w*.05f,h*.61f,w*.23f,h*.65f,p); c.drawRect(w*.78f,h*.63f,w*.95f,h*.68f,p);
+    }
+
+    private void drawObject(Canvas c,float w,float h,float horizon,GameModel.Obj o,int[] col){
+        float d=o.z-model.cameraZ; if(d<.8f||d>110f)return; float s=scaleAt(d,w,h); PointF q=proj(o.x,o.y,o.z,w,h,horizon);
+        if(o.type==GameModel.TYPE_CRYSTAL){drawCrystal2D(c,q.x,q.y,o.h*s*.58f,Color.rgb(47,214,210));return;}
+        if(o.type==GameModel.TYPE_ORB){
+            float r=o.w*s*.52f; RadialGradient g=new RadialGradient(q.x-r*.25f,q.y-r*.25f,r,Color.WHITE,Color.rgb(39,194,178),Shader.TileMode.CLAMP);p.setShader(g);c.drawCircle(q.x,q.y,r,p);p.setShader(null);stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(1f,r*.07f));stroke.setColor(Color.argb(160,255,255,255));c.drawCircle(q.x,q.y,r*.92f,stroke);return;
+        }
+        if(o.type==GameModel.TYPE_RING){
+            float r=o.w*s*.48f; stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(2f,r*.14f));stroke.setColor(Color.argb(175,225,249,247));c.drawCircle(q.x,q.y,r,stroke);stroke.setStrokeWidth(Math.max(1f,r*.035f));stroke.setColor(Color.argb(190,57,185,176));c.drawCircle(q.x,q.y,r*.77f,stroke);return;
+        }
+        c.save();c.rotate((float)Math.toDegrees(o.rotation),q.x,q.y);
+        float ww=o.w*s,hh=o.h*s;
+        if(o.type==GameModel.TYPE_BAR){
+            p.setColor(Color.argb(185,214,239,237));c.drawRoundRect(q.x-ww*.5f,q.y-hh*.5f,q.x+ww*.5f,q.y+hh*.5f,hh*.3f,hh*.3f,p);
+            stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(1f,hh*.07f));stroke.setColor(Color.argb(190,255,255,255));c.drawRoundRect(q.x-ww*.5f,q.y-hh*.5f,q.x+ww*.5f,q.y+hh*.5f,hh*.3f,hh*.3f,stroke);
+        } else {
+            LinearGradient glass=new LinearGradient(q.x-ww*.5f,q.y-hh*.5f,q.x+ww*.5f,q.y+hh*.5f,Color.argb(55,255,255,255),Color.argb(115,170,235,233),Shader.TileMode.CLAMP);p.setShader(glass);p.setStyle(Paint.Style.FILL);c.drawRect(q.x-ww*.5f,q.y-hh*.5f,q.x+ww*.5f,q.y+hh*.5f,p);p.setShader(null);
+            stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(1f,ww*.018f));stroke.setColor(Color.argb(175,245,255,255));c.drawRect(q.x-ww*.5f,q.y-hh*.5f,q.x+ww*.5f,q.y+hh*.5f,stroke);
+            // Inner refraction lines
+            stroke.setColor(Color.argb(70,255,255,255));c.drawLine(q.x-ww*.35f,q.y-hh*.5f,q.x+ww*.1f,q.y+hh*.5f,stroke);c.drawLine(q.x+ww*.4f,q.y-hh*.5f,q.x-ww*.15f,q.y+hh*.5f,stroke);
+        }
+        c.restore();
+    }
+
+    private void drawCrystal2D(Canvas c,float x,float y,float size,int color){
+        p.setStyle(Paint.Style.FILL);
+        LinearGradient g=new LinearGradient(x-size*.4f,y-size,x+size*.5f,y+size,Color.WHITE,color,Shader.TileMode.CLAMP);p.setShader(g);
+        path.reset();path.moveTo(x,y-size);path.lineTo(x+size*.48f,y-size*.10f);path.lineTo(x+size*.30f,y+size);path.lineTo(x-size*.33f,y+size*.72f);path.lineTo(x-size*.52f,y-size*.06f);path.close();c.drawPath(path,p);p.setShader(null);
+        stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(1f,size*.025f));stroke.setColor(Color.argb(180,255,255,255));c.drawPath(path,stroke);
+        c.drawLine(x,y-size,x-size*.05f,y+size*.72f,stroke);c.drawLine(x-size*.52f,y-size*.06f,x+size*.48f,y-size*.10f,stroke);
+    }
+
+    private void drawShot(Canvas c,float w,float h,float horizon,GameModel.Shot s){
+        float d=s.z-model.cameraZ;if(d<.3f||d>80f)return;PointF q=proj(s.x,s.y,s.z,w,h,horizon);float r=Math.max(2f,scaleAt(d,w,h)*.23f);
+        RadialGradient g=new RadialGradient(q.x-r*.3f,q.y-r*.35f,r,Color.WHITE,Color.rgb(116,144,150),Shader.TileMode.CLAMP);p.setShader(g);c.drawCircle(q.x,q.y,r,p);p.setShader(null);stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(Math.max(1f,r*.07f));stroke.setColor(Color.argb(160,255,255,255));c.drawCircle(q.x,q.y,r*.88f,stroke);
+    }
+    private void drawShard(Canvas c,float w,float h,float horizon,Shard s){
+        float d=s.z-model.cameraZ;if(d<.5f||d>75f)return;PointF q=proj(s.x,s.y,s.z,w,h,horizon);float sc=scaleAt(d,w,h);float sz=s.size*sc;float a=Math.max(0,s.life/s.maxLife);p.setColor(Color.argb((int)(190*a),210,250,248));c.save();c.rotate(s.rot,q.x,q.y);path.reset();path.moveTo(q.x,q.y-sz);path.lineTo(q.x+sz*.7f,q.y+sz*.6f);path.lineTo(q.x-sz*.5f,q.y+sz*.2f);path.close();c.drawPath(path,p);c.restore();
+    }
+
+    private void drawMenu(Canvas c,float w,float h){
+        p.setTextAlign(Paint.Align.CENTER);p.setTypeface(Typeface.create("sans-serif-thin",Typeface.NORMAL));p.setTextSize(Math.min(w,h)*.17f);p.setLetterSpacing(.10f);p.setColor(Color.argb(220,255,255,255));c.drawText("SHATTER",w*.5f,h*.32f,p);p.setLetterSpacing(0);
+        float r=Math.min(w,h)*.105f;float pulse=1f+(float)Math.sin(menuT*2.1f)*.025f;RadialGradient g=new RadialGradient(w*.5f,h*.54f,r*pulse,Color.rgb(86,232,190),Color.rgb(24,185,152),Shader.TileMode.CLAMP);p.setShader(g);c.drawCircle(w*.5f,h*.54f,r*pulse,p);p.setShader(null);p.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));p.setTextSize(r*.42f);p.setColor(Color.WHITE);c.drawText("START",w*.5f,h*.54f+r*.14f,p);
+        p.setTextSize(Math.min(w,h)*.032f);p.setColor(Color.argb(155,255,255,255));c.drawText("tap • aim • shatter",w*.5f,h*.78f,p);
+    }
+
+    private void drawHud(Canvas c,float w,float h){
+        float unit=Math.min(w,h);float cy=h*.075f;float r=unit*.026f;
+        RadialGradient g=new RadialGradient(w*.5f-r*.25f,cy-r*.25f,r,Color.WHITE,Color.rgb(126,151,155),Shader.TileMode.CLAMP);p.setShader(g);c.drawCircle(w*.5f-r*1.6f,cy,r,p);p.setShader(null);
+        p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));p.setTextAlign(Paint.Align.LEFT);p.setTextSize(unit*.052f);p.setColor(Color.argb(220,255,255,255));c.drawText(String.valueOf(model.balls),w*.5f-r*.65f,cy+unit*.018f,p);
+        // pause button
+        p.setColor(Color.argb(120,255,255,255));float px=w-unit*.07f,py=unit*.05f,ph=unit*.04f,pw=unit*.007f;c.drawRect(px,py,px+pw,py+ph,p);c.drawRect(px+pw*2.2f,py,px+pw*3.2f,py+ph,p);
+        if(model.multiplier>1){p.setTextAlign(Paint.Align.CENTER);p.setTextSize(unit*.026f);p.setColor(Color.argb(190,255,255,255));c.drawText("×"+model.multiplier,w*.5f,cy+unit*.055f,p);}
+        if(toastT>0){
+            float alpha=Math.min(1f,toastT/.22f);p.setColor(Color.argb((int)(125*alpha),15,159,167));c.drawRect(0,h*.84f,w,h,p);p.setTextAlign(Paint.Align.CENTER);p.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));p.setTextSize(unit*.038f);p.setColor(Color.argb((int)(235*alpha),255,255,255));c.drawText(toast,w*.5f,h*.91f,p);
+        }
+        if(paused){p.setColor(Color.argb(150,0,25,31));c.drawRect(0,0,w,h,p);p.setTextAlign(Paint.Align.CENTER);p.setTextSize(unit*.09f);p.setColor(Color.WHITE);c.drawText("PAUSED",w*.5f,h*.47f,p);p.setTextSize(unit*.035f);c.drawText("tap to continue",w*.5f,h*.57f,p);}
+        if(mode==2){p.setColor(Color.argb(145,4,18,28));c.drawRect(0,0,w,h,p);p.setTextAlign(Paint.Align.CENTER);p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));p.setTextSize(unit*.10f);p.setColor(Color.WHITE);c.drawText("OUT OF BALLS",w*.5f,h*.44f,p);p.setTypeface(Typeface.DEFAULT);p.setTextSize(unit*.038f);c.drawText("tap to restart",w*.5f,h*.56f,p);}
+    }
+
+    private void updateAccessibilityState(){
+        String state;
+        if(mode==0) state="menu";
+        else if(mode==2) state="game over";
+        else if(paused) state="paused";
+        else state="playing";
+        setContentDescription("Shatter Run. state "+state+". balls "+model.balls+". crystals "+model.crystals+". multiplier "+model.multiplier+".");
+    }
+
+    @Override public boolean onTouchEvent(MotionEvent e){
+        if(e.getAction()!=MotionEvent.ACTION_DOWN)return true;float w=getWidth(),h=getHeight(),x=e.getX(),y=e.getY();
+        if(mode==0){mode=1;model.reset();model.start();tutorialStage=0;toast("tap to throw balls",3.1f);updateAccessibilityState();if(ambient!=null)try{ambient.start();}catch(Exception ignored){}return true;}
+        if(mode==2){mode=1;model.reset();model.start();tutorialStage=0;toast("tap to throw balls",3.1f);updateAccessibilityState();if(ambient!=null)try{ambient.start();}catch(Exception ignored){}return true;}
+        if(paused){paused=false;updateAccessibilityState();return true;}
+        if(x>w*.90f && y<h*.18f){paused=true;updateAccessibilityState();return true;}
+        float aimX=(x-w*.5f)/(w*.5f);float aimY=(h*.49f-y)/(h*.5f);model.fire(aimX,aimY);return true;
+    }
+
+    private void toast(String s,float seconds){toast=s;toastT=seconds;}
+    private void spawnShards(GameModel.Obj o,int n){for(int i=0;i<n;i++){Shard s=new Shard();s.x=o.x+(rng.nextFloat()-.5f)*o.w;s.y=o.y+(rng.nextFloat()-.5f)*o.h;s.z=o.z+(rng.nextFloat()-.5f)*.5f;s.vx=(rng.nextFloat()-.5f)*5f;s.vy=(rng.nextFloat()-.3f)*4f;s.vz=(rng.nextFloat()-.45f)*5f;s.maxLife=s.life=.7f+rng.nextFloat()*1.1f;s.size=.04f+rng.nextFloat()*.10f;s.rot=rng.nextFloat()*360f;s.vr=(rng.nextFloat()-.5f)*440f;shards.add(s);}}
+    private void play(int id,float vol){if(sounds!=null&&id!=0)sounds.play(id,vol,vol,1,0,1f);}
+    private void vib(int ms,int amp){if(vibrator==null||!vibrator.hasVibrator())return;try{if(Build.VERSION.SDK_INT>=26)vibrator.vibrate(VibrationEffect.createOneShot(ms,amp));else vibrator.vibrate(ms);}catch(Exception ignored){}}
+
+    @Override public void onShot(){updateAccessibilityState();play(sndShot,.55f);}
+    @Override public void onCrystal(GameModel.Obj o,int reward){updateAccessibilityState();spawnShards(o,23);play(sndCrystal,.8f);flash=.36f;shake=.22f;vib(16,80);if(tutorialStage==0){tutorialStage=1;toast("hit crystals • +3 balls",2.7f);}else if(model.crystals==10){toast("10 crystals • multiball upgraded",3.0f);}}
+    @Override public void onShatter(GameModel.Obj o){updateAccessibilityState();spawnShards(o,38);play(sndGlass,.85f);flash=.28f;shake=.48f;vib(24,95);if(tutorialStage<2){tutorialStage=2;toast("break glass before it reaches you",3.0f);}}
+    @Override public void onCollision(GameModel.Obj o,int lost){updateAccessibilityState();spawnShards(o,52);play(sndHit,.9f);flash=.70f;shake=1f;vib(65,180);toast("crash • lose "+lost+" balls",2.4f);}
+    @Override public void onGameOver(){mode=2;updateAccessibilityState();toast("",0);play(sndHit,.65f);if(ambient!=null)try{ambient.pause();}catch(Exception ignored){}}
+}
