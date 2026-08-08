@@ -72,11 +72,14 @@ assert_state e2e-artifacts/03_crystal_paused.xml 'state paused'
 assert_state e2e-artifacts/03_crystal_paused.xml 'crystals 1'
 assert_state e2e-artifacts/03_crystal_paused.xml 'balls 27'
 
-# This tap resumes. Prove resumed gameplay by consuming all 27 balls with steep
-# upward misses in one adb shell session, before the first dangerous obstacle arrives.
+# Resume and inject the remaining taps in parallel. Serial `input tap` costs
+# roughly 2–3 seconds per event in this emulator and would let the level run away.
 adb shell input tap "$CX" "$CY"
-adb shell "i=0; while [ \$i -lt 27 ]; do input tap $CX $TOP_Y; i=\$((i+1)); done"
-sleep 2.5
+START_MS=$(date +%s%3N)
+adb shell "i=0; while [ \$i -lt 27 ]; do input tap $CX $TOP_Y & i=\$((i+1)); done; wait"
+END_MS=$(date +%s%3N)
+echo "rapid_taps_ms=$((END_MS-START_MS))" | tee e2e-artifacts/rapid_taps.txt
+sleep 3
 dump_state 04_gameover
 assert_state e2e-artifacts/04_gameover.xml 'state game over'
 assert_state e2e-artifacts/04_gameover.xml 'balls 0'
