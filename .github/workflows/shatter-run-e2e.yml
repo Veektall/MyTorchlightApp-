@@ -22,6 +22,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: android-actions/setup-android@v3
+
       - name: Install Android compile tools
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
@@ -78,14 +80,12 @@ jobs:
             echo "screen=${W}x${H}"
             CX=$((W/2)); CY=$((H/2)); TOP_Y=$((H/100)); PAUSE_X=$((W*95/100)); PAUSE_Y=$((H*8/100))
 
-            # Menu -> active run.
             adb shell input tap "$CX" "$CY"
             sleep 0.7
             dump_state 02_playing
             grep -q 'state playing' e2e-artifacts/02_playing.xml
             grep -q 'balls 25' e2e-artifacts/02_playing.xml
 
-            # Center shot must collect the opening crystal: 25 - 1 + 3 = 27.
             adb shell input tap "$CX" "$CY"
             sleep 0.8
             dump_state 03_crystal
@@ -93,7 +93,6 @@ jobs:
             grep -q 'crystals 1' e2e-artifacts/03_crystal.xml
             grep -q 'balls 27' e2e-artifacts/03_crystal.xml
 
-            # Pause and resume through the actual canvas touch target.
             adb shell input tap "$PAUSE_X" "$PAUSE_Y"
             sleep 0.25
             dump_state 04_paused
@@ -103,14 +102,12 @@ jobs:
             dump_state 05_resumed
             grep -q 'state playing' e2e-artifacts/05_resumed.xml
 
-            # Exhaust all 27 balls with steep upward misses, then wait for projectiles to expire.
             for i in $(seq 1 27); do adb shell input tap "$CX" "$TOP_Y"; done
             sleep 5
             dump_state 06_gameover
             grep -q 'state game over' e2e-artifacts/06_gameover.xml
             grep -q 'balls 0' e2e-artifacts/06_gameover.xml
 
-            # Game-over tap must reset counters and restart immediately.
             adb shell input tap "$CX" "$CY"
             sleep 0.4
             dump_state 07_restart
