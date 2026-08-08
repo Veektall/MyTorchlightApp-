@@ -47,9 +47,9 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none
+          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none -no-metrics
           script: |
-            set -euxo pipefail
+            set -eu
             mkdir -p e2e-artifacts
             adb install -r shatter-e2e/build/ShatterRun-CI.apk
             adb logcat -c
@@ -69,35 +69,36 @@ jobs:
             grep -q 'state menu' e2e-artifacts/01_menu.xml
             grep -q 'balls 25' e2e-artifacts/01_menu.xml
 
-            read W H < <(python3 - <<'PY'
+            set -- $(python3 - <<'PY'
             import struct
             with open('e2e-artifacts/01_menu.png','rb') as f:
                 d=f.read(24)
             print(*struct.unpack('>II',d[16:24]))
             PY
             )
+            W="$1"; H="$2"
             echo "screen=${W}x${H}"
             CX=$((W/2)); CY=$((H/2)); AIM_Y=$((H*49/100)); TOP_Y=$((H/100)); PAUSE_X=$((W*95/100)); PAUSE_Y=$((H*8/100))
 
             adb shell input tap "$CX" "$CY"
-            sleep 0.7
+            sleep 1
             dump_state 02_playing
             grep -q 'state playing' e2e-artifacts/02_playing.xml
             grep -q 'balls 25' e2e-artifacts/02_playing.xml
 
             adb shell input tap "$CX" "$AIM_Y"
-            sleep 0.8
+            sleep 1
             dump_state 03_crystal
             grep -q 'state playing' e2e-artifacts/03_crystal.xml
             grep -q 'crystals 1' e2e-artifacts/03_crystal.xml
             grep -q 'balls 27' e2e-artifacts/03_crystal.xml
 
             adb shell input tap "$PAUSE_X" "$PAUSE_Y"
-            sleep 0.25
+            sleep 1
             dump_state 04_paused
             grep -q 'state paused' e2e-artifacts/04_paused.xml
             adb shell input tap "$CX" "$CY"
-            sleep 0.25
+            sleep 1
             dump_state 05_resumed
             grep -q 'state playing' e2e-artifacts/05_resumed.xml
 
@@ -108,7 +109,7 @@ jobs:
             grep -q 'balls 0' e2e-artifacts/06_gameover.xml
 
             adb shell input tap "$CX" "$CY"
-            sleep 0.4
+            sleep 1
             dump_state 07_restart
             grep -q 'state playing' e2e-artifacts/07_restart.xml
             grep -q 'balls 25' e2e-artifacts/07_restart.xml
