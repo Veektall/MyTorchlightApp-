@@ -1,0 +1,140 @@
+package com.victorojo.shatterrun;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
+/** Pure Java game state so the core rules can be tested outside Android. */
+public final class GameModel {
+    public static final int TYPE_CRYSTAL = 1;
+    public static final int TYPE_GLASS = 2;
+    public static final int TYPE_ORB = 3;
+    public static final int TYPE_BAR = 4;
+    public static final int TYPE_RING = 5;
+
+    public static final class Obj {
+        public int type;
+        public float x, y, z, w, h, rotation, spin;
+        public boolean alive = true;
+        public boolean dangerous;
+        public int reward;
+        Obj(int type,float x,float y,float z,float w,float h) {
+            this.type=type; this.x=x; this.y=y; this.z=z; this.w=w; this.h=h;
+        }
+    }
+
+    public static final class Shot {
+        public float x,y,z,vx,vy,vz;
+        public boolean alive=true;
+    }
+
+    public interface Listener {
+        void onShot();
+        void onCrystal(Obj o, int reward);
+        void onShatter(Obj o);
+        void onCollision(Obj o, int lost);
+        void onGameOver();
+    }
+
+    public final List<Obj> objects = new ArrayList<>();
+    public final List<Shot> shots = new ArrayList<>();
+    private final Random rng = new Random(947113L);
+    private Listener listener;
+
+    public float cameraZ;
+    public float speed;
+    public float runTime;
+    public int balls;
+    public int crystals;
+    public int combo;
+    public int multiplier;
+    public boolean running;
+    public boolean gameOver;
+    public float nextSpawnZ;
+
+    public GameModel() { reset(); }
+    public void setListener(Listener l) { listener=l; }
+
+    public void reset() {
+        objects.clear(); shots.clear();
+        cameraZ=0f; speed=6.0f; runTime=0f; balls=25; crystals=0; combo=0; multiplier=1;
+        running=false; gameOver=false; nextSpawnZ=12f;
+        seedOpening();
+    }
+
+    private Obj add(int type,float x,float y,float z,float w,float h) {
+        Obj o=new Obj(type,x,y,z,w,h); objects.add(o); return o;
+    }
+
+    private void seedOpening() {
+        // Tutorial path: crystals first, then simple panes, then mixed geometry.
+        Obj c1=add(TYPE_CRYSTAL,0f,0.0f,15f,0.75f,1.55f); c1.reward=3;
+        Obj c2=add(TYPE_CRYSTAL,-1.9f,-0.25f,22f,0.75f,1.55f); c2.reward=3;
+        Obj c3=add(TYPE_CRYSTAL,1.8f,-0.25f,22f,0.75f,1.55f); c3.reward=3;
+        Obj g=add(TYPE_GLASS,0f,0.0f,30f,3.2f,3.5f); g.dangerous=true;
+        Obj c4=add(TYPE_CRYSTAL,0f,0.35f,34f,0.8f,1.7f); c4.reward=3;
+        Obj b1=add(TYPE_BAR,0f,0f,42f,5.0f,0.45f); b1.dangerous=true; b1.spin=0.85f;
+        Obj c5=add(TYPE_CRYSTAL,-2.2f,-0.25f,49f,0.75f,1.55f); c5.reward=3;
+        Obj c6=add(TYPE_CRYSTAL,2.2f,-0.25f,49f,0.75f,1.55f); c6.reward=3;
+        Obj ring=add(TYPE_RING,0f,0f,58f,3.8f,3.8f); ring.dangerous=false; ring.spin=0.3f;
+        nextSpawnZ=64f;
+    }
+
+    public void start() { running=true; gameOver=false; }
+
+    public boolean fire(float aimX, float aimY) {
+        if (!running || gameOver || balls<=0) return false;
+        balls--;
+        Shot s=new Shot();
+        s.x=0f; s.y=0f; s.z=cameraZ+0.7f;
+        s.vx=aimX*7.0f; s.vy=aimY*4.9f; s.vz=27.0f;
+        shots.add(s);
+        if(listener!=null) listener.onShot();
+        if (balls<=0 && shots.isEmpty()) finishIfEmpty();
+        return true;
+    }
+
+    public void update(float dt) {
+        if(!running || gameOver) return;
+        dt=Math.min(dt,0.05f);
+        runTime+=dt;
+        speed=Math.min(8.6f, 6.0f + runTime*0.018f);
+        cameraZ+=speed*dt;
+
+        while(nextSpawnZ < cameraZ+105f) spawnPattern(nextSpawnZ);
+
+        for(Obj o: objects) if(o.alive) o.rotation += o.spin*dt;
+
+        for(Shot s: shots) if(s.alive) {
+            s.x+=s.vx*dt; s.y+=s.vy*dt; s.z+=s.vz*dt;
+            if(s.z>cameraZ+75f || Math.abs(s.x)>12f || Math.abs(s.y)>8f) s.alive=false;
+            else testShot(s);
+        }
+        Iterator<Shot> si=shots.iterator(); while(si.hasNext()) if(!si.next().alive) si.remove();
+
+        for(Obj o: objects) if(o.alive && o.dangerous && o.z-cameraZ < 1.0f && o.z-cameraZ > -0.8f) {
+            if (playerIntersects(o)) {
+                o.alive=false;
+                int lost=Math.min(balls, 10);
+                balls-=lost; combo=0; multiplier=1;
+                if(listener!=null) listener.onCollision(o,lost);
+            }
+        }
+        for (java.util.Iterator<Obj> it = objects.iterator(); it.hasNext();) {
+            Obj o = it.next();
+            if ((!o.alive && o.z < cameraZ - 10f) || o.z < cameraZ - 16f) it.remove();
+        }
+        if (balls<=0 && shots.isEmpty()) finishIfEmpty();
+    }
+
+    private boolean playerIntersects(Obj o) {
+        if(o.type==TYPE_BAR) return true;
+        return Math.abs(o.x) < o.w*0.5f+0.45f && Math.abs(o.y) < o.h*0.5f+0.45f;
+    }
+
+    private void testShot(Shot s) {
+        for(Obj o: objects) {
+            if(!o.alive) continue;
+            float dz=Math.abs(s.z-o.z);
+            if(dz>0.7f) continue;
