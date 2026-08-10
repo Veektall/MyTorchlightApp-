@@ -1,0 +1,101 @@
+name: Temporary Grab APK Build
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  build:
+    if: startsWith(github.event.issue.title, 'grab-temp-build:') && github.actor == github.repository_owner
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Reconstruct and patch Grab source
+        run: |
+          set -euo pipefail
+          cat .grab-temp.part00 .grab-temp.part01 .grab-temp.part02 .grab-temp.part03 > /tmp/grab-src.b64
+          test "$(wc -c < /tmp/grab-src.b64 | tr -d ' ')" -eq 23580
+          base64 -D -i /tmp/grab-src.b64 -o /tmp/grab-src.zip
+          test "$(shasum -a 256 /tmp/grab-src.zip | awk '{print $1}')" = 'a8e3220f8bf55163866eee5d6619b5c25b41c49c99a18b054df1b5c1950a4a6c'
+          rm -rf .grab-build grab-v2
+          unzip -q /tmp/grab-src.zip -d .
+          mv grab-v2 .grab-build
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          g=Path('.grab-build/app/build.gradle')
+          s=g.read_text()
+          s=s.replace('android {', 'android {\n    buildFeatures { buildConfig true }', 1)
+          s=re.sub(r"abiFilters[^\n]+", "abiFilters 'arm64-v8a'", s, count=1)
+          g.write_text(s)
+          j=Path('.grab-build/app/src/main/java/com/veektall/grab/MainActivity.java')
+          s=j.read_text()
+          old='String format = "best[protocol^=http][height<="+height+"][vcodec!=none][acodec!=none]/best[protocol^=http][vcodec!=none][acodec!=none]";'
+          new='String format = height <= 360 ? "best[height<=360]/worst" : "best[height<=720]/best";'
+          if old not in s:
+              raise SystemExit('old selector missing')
+          j.write_text(s.replace(old,new))
+          PY
+          grep -q 'best\[height<=720\]/best' .grab-build/app/src/main/java/com/veektall/grab/MainActivity.java
+          grep -q 'best\[height<=360\]/worst' .grab-build/app/src/main/java/com/veektall/grab/MainActivity.java
+          grep -q 'refreshExtractorIfNeeded();' .grab-build/app/src/main/java/com/veektall/grab/MainActivity.java
+
+      - name: Install Gradle 8.14.3
+        run: |
+          set -euo pipefail
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.14.3-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo '/tmp/gradle-8.14.3/bin' >> "$GITHUB_PATH"
+
+      - name: Build and verify unsigned ARM64 APK
+        working-directory: .grab-build
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleRelease
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | tail -1)"
+          "$AAPT" dump badging "$APK" | grep "package: name='com.veektall.grab'"
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | grep -q 'android.intent.action.SEND'
+          cp "$APK" "$GITHUB_WORKSPACE/Grab-v2-arm64-unsigned.apk"
+          shasum -a 256 "$GITHUB_WORKSPACE/Grab-v2-arm64-unsigned.apk"
+          ls -lh "$GITHUB_WORKSPACE/Grab-v2-arm64-unsigned.apk"
+
+      - name: Publish temporary public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="grab-temp-${GITHUB_RUN_ID}"
+          gh release create "$TAG" Grab-v2-arm64-unsigned.apk --title "Temporary Grab APK $GITHUB_RUN_ID" --notes "Temporary transfer release for the verified Grab v2 ARM64 APK."
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Grab-v2-arm64-unsigned.apk"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Report release ready
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`GRAB_TEMP_READY\nTag: ${process.env.TAG}\nURL: ${process.env.URL}`});
+            await github.rest.issues.update({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,state:'closed'});
+
+      - name: Keep release available briefly
+        run: sleep 300
+
+      - name: Remove temporary public release
+        if: always() && env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "$TAG" --cleanup-tag -y || true
