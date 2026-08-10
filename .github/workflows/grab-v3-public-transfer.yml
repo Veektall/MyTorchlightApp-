@@ -1,0 +1,31 @@
+name: Grab v3 public artifact transfer
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  transfer:
+    if: startsWith(github.event.issue.title, 'grab-v3-public-transfer:') && github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download verified unsigned APK
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://tempfile.org/8GfhaBai6ct/download' -o Grab-by-Rhoda-v3-arm64-unsigned.apk
+          echo '9f02eefa53e29a3e73eeb80bf60c246a51a4dcffe9c2cefccd1e710a9e573606  Grab-by-Rhoda-v3-arm64-unsigned.apk' | sha256sum -c -
+          test "$(stat -c%s Grab-by-Rhoda-v3-arm64-unsigned.apk)" -eq 24314684
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grab-by-rhoda-v3-transfer
+          path: Grab-by-Rhoda-v3-arm64-unsigned.apk
+          retention-days: 1
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`GRAB_V3_PUBLIC_TRANSFER_OK\nRun ${context.runId}`});
+            await github.rest.issues.update({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,state:'closed'});
