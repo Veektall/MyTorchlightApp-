@@ -73,29 +73,17 @@ jobs:
           shasum -a 256 "$GITHUB_WORKSPACE/Grab-v2-arm64-unsigned.apk"
           ls -lh "$GITHUB_WORKSPACE/Grab-v2-arm64-unsigned.apk"
 
-      - name: Publish temporary public release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="grab-temp-${GITHUB_RUN_ID}"
-          gh release create "$TAG" Grab-v2-arm64-unsigned.apk --title "Temporary Grab APK $GITHUB_RUN_ID" --notes "Temporary transfer release for the verified Grab v2 ARM64 APK."
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Grab-v2-arm64-unsigned.apk"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "URL=$URL" >> "$GITHUB_ENV"
+      - name: Upload transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-v2-transfer
+          path: Grab-v2-arm64-unsigned.apk
+          retention-days: 1
+          if-no-files-found: error
 
-      - name: Report release ready
+      - name: Report artifact ready
         uses: actions/github-script@v8
         with:
           script: |
-            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`GRAB_TEMP_READY\nTag: ${process.env.TAG}\nURL: ${process.env.URL}`});
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`GRAB_ARTIFACT_READY\nRun: ${context.runId}\nArtifact: grab-v2-transfer`});
             await github.rest.issues.update({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,state:'closed'});
-
-      - name: Keep release available briefly
-        run: sleep 300
-
-      - name: Remove temporary public release
-        if: always() && env.TAG != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release delete "$TAG" --cleanup-tag -y || true
