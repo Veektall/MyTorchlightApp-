@@ -1,0 +1,3 @@
+Supabase table: public.telegram_relay_feature_flags
+Feature key: v5_2_general_replies
+Rollback safety order: disable flag first, restore v5.1 webhook second.
