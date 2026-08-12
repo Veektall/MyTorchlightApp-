@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   relay:
-    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-v52:') || startsWith(github.event.issue.title, 'telegram-v52-control:')) && github.actor == github.repository_owner
+    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-v52:') || startsWith(github.event.issue.title, 'telegram-v52-control:') || startsWith(github.event.issue.title, 'telegram-v52-inline:')) && github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -18,6 +18,7 @@ jobs:
         env:
           UNIFIED_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v52
           CONTROL_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-v52-control
+          INLINE_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-inline-document-v52
           ISSUE_TITLE: ${{ github.event.issue.title }}
           SEALED: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -34,6 +35,9 @@ jobs:
           if [[ "$ISSUE_TITLE" == telegram-v52-control:* ]]; then
             ENDPOINT="$CONTROL_ENDPOINT"
             MODE="control"
+          elif [[ "$ISSUE_TITLE" == telegram-v52-inline:* ]]; then
+            ENDPOINT="$INLINE_ENDPOINT"
+            MODE="delivery"
           else
             ENDPOINT="$UNIFIED_ENDPOINT"
             MODE="delivery"
@@ -54,7 +58,7 @@ jobs:
           trap - ERR
           if [ "$MODE" = "control" ]; then
             action="$(jq -r '.action // "unknown"' <<< "$response")"
-            enabled="$(jq -r '.enabled // "unknown"' <<< "$response")"
+            enabled="$(jq -r 'if has("enabled") then .enabled else "unknown" end' <<< "$response")"
             webhook="$(jq -r '.webhook // "unknown"' <<< "$response")"
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram v5.2 control succeeded. Action: $action; Enabled: $enabled; Webhook: $webhook"
           elif [ "$(jq -r '.dry_run // false' <<< "$response")" = "true" ]; then
