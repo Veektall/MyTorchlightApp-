@@ -10,13 +10,15 @@ permissions:
 
 jobs:
   relay:
-    if: github.event_name == 'issues' && startsWith(github.event.issue.title, 'telegram-v52:') && github.actor == github.repository_owner
+    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-v52:') || startsWith(github.event.issue.title, 'telegram-v52-control:')) && github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - name: Deliver encrypted Telegram v5.2 payload
         env:
-          ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v52
+          UNIFIED_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v52
+          CONTROL_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-v52-control
+          ISSUE_TITLE: ${{ github.event.issue.title }}
           SEALED: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GH_TOKEN: ${{ github.token }}
@@ -29,6 +31,13 @@ jobs:
           }
           trap fail ERR
           jq -e '.v == 1 and (.wrapped_key | type == "string") and (.iv | type == "string") and (.ciphertext | type == "string")' <<< "$SEALED" >/dev/null
+          if [[ "$ISSUE_TITLE" == telegram-v52-control:* ]]; then
+            ENDPOINT="$CONTROL_ENDPOINT"
+            MODE="control"
+          else
+            ENDPOINT="$UNIFIED_ENDPOINT"
+            MODE="delivery"
+          fi
           token_response="$(curl --fail-with-body -sS --max-time 20 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=telegram-status-relay")"
           oidc="$(jq -r '.value // empty' <<< "$token_response")"
           test -n "$oidc"
@@ -43,7 +52,12 @@ jobs:
             false
           fi
           trap - ERR
-          if [ "$(jq -r '.dry_run // false' <<< "$response")" = "true" ]; then
+          if [ "$MODE" = "control" ]; then
+            action="$(jq -r '.action // "unknown"' <<< "$response")"
+            enabled="$(jq -r '.enabled // "unknown"' <<< "$response")"
+            webhook="$(jq -r '.webhook // "unknown"' <<< "$response")"
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram v5.2 control succeeded. Action: $action; Enabled: $enabled; Webhook: $webhook"
+          elif [ "$(jq -r '.dry_run // false' <<< "$response")" = "true" ]; then
             kind="$(jq -r '.kind // "unknown"' <<< "$response")"
             parts="$(jq -r '.parts // 1' <<< "$response")"
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram v5.2 preflight passed. Kind: $kind; parts: $parts."
