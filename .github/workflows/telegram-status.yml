@@ -14,7 +14,7 @@ jobs:
   relay:
     if: github.event_name == 'issues' && startsWith(github.event.issue.title, 'telegram-status:') && github.actor == github.repository_owner
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - name: Deliver encrypted Telegram status
         env:
@@ -35,11 +35,18 @@ jobs:
           oidc="$(jq -r '.value // empty' <<< "$token_response")"
           test -n "$oidc"
           payload="$(jq -n --argjson sealed "$SEALED" '{sealed:$sealed}')"
-          response="$(curl --fail-with-body -sS --max-time 30 -X POST "$ENDPOINT" -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" -d "$payload")"
+          response="$(curl --fail-with-body -sS --max-time 90 -X POST "$ENDPOINT" -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" -d "$payload")"
           test "$(jq -r '.ok // false' <<< "$response")" = "true"
-          message_id="$(jq -r '.message_id // "confirmed"' <<< "$response")"
           trap - ERR
-          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram delivered successfully. Message ID: $message_id"
+          if [ "$(jq -r '.dry_run // false' <<< "$response")" = "true" ]; then
+            kind="$(jq -r '.kind // "unknown"' <<< "$response")"
+            bytes="$(jq -r '.bytes // 0' <<< "$response")"
+            storage="$(jq -r '.storage_tested // false' <<< "$response")"
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram relay preflight passed. Kind: $kind; bytes: $bytes; private storage tested: $storage."
+          else
+            message_id="$(jq -r '.message_id // "confirmed"' <<< "$response")"
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram delivered successfully. Message ID: $message_id"
+          fi
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
 
   keepalive:
