@@ -12,13 +12,15 @@ permissions:
 
 jobs:
   relay:
-    if: github.event_name == 'issues' && startsWith(github.event.issue.title, 'telegram-status:') && github.actor == github.repository_owner
+    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-status:') || startsWith(github.event.issue.title, 'telegram-question:')) && github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Deliver encrypted Telegram status
+      - name: Deliver encrypted Telegram payload
         env:
-          ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-status-relay
+          STATUS_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-status-relay
+          QUESTION_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-question-relay
+          ISSUE_TITLE: ${{ github.event.issue.title }}
           SEALED: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GH_TOKEN: ${{ github.token }}
@@ -31,6 +33,11 @@ jobs:
           }
           trap fail ERR
           jq -e '.v == 1 and (.wrapped_key | type == "string") and (.iv | type == "string") and (.ciphertext | type == "string")' <<< "$SEALED" >/dev/null
+          if [[ "$ISSUE_TITLE" == telegram-question:* ]]; then
+            ENDPOINT="$QUESTION_ENDPOINT"
+          else
+            ENDPOINT="$STATUS_ENDPOINT"
+          fi
           token_response="$(curl --fail-with-body -sS --max-time 20 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=telegram-status-relay")"
           oidc="$(jq -r '.value // empty' <<< "$token_response")"
           test -n "$oidc"
