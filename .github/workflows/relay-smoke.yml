@@ -1,0 +1,16 @@
+name: Relay smoke
+on:
+  issues:
+    types: [opened]
+permissions:
+  issues: write
+jobs:
+  ping:
+    if: startsWith(github.event.issue.title, 'relay-smoke:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm public runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Public GitHub Actions runner is alive."
