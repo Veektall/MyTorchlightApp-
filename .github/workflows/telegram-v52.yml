@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   relay:
-    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-v52:') || startsWith(github.event.issue.title, 'telegram-v52-control:') || startsWith(github.event.issue.title, 'telegram-v52-inline:')) && github.actor == github.repository_owner
+    if: github.event_name == 'issues' && (startsWith(github.event.issue.title, 'telegram-v52:') || startsWith(github.event.issue.title, 'telegram-v52-control:') || startsWith(github.event.issue.title, 'telegram-v52-inline:') || startsWith(github.event.issue.title, 'telegram-v52-large:')) && github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -19,6 +19,7 @@ jobs:
           UNIFIED_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v52
           CONTROL_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-v52-control
           INLINE_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-inline-document-v52
+          LARGE_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-large-file-link-v52
           ISSUE_TITLE: ${{ github.event.issue.title }}
           SEALED: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -37,6 +38,9 @@ jobs:
             MODE="control"
           elif [[ "$ISSUE_TITLE" == telegram-v52-inline:* ]]; then
             ENDPOINT="$INLINE_ENDPOINT"
+            MODE="delivery"
+          elif [[ "$ISSUE_TITLE" == telegram-v52-large:* ]]; then
+            ENDPOINT="$LARGE_ENDPOINT"
             MODE="delivery"
           else
             ENDPOINT="$UNIFIED_ENDPOINT"
@@ -69,7 +73,7 @@ jobs:
             message_id="$(jq -r '.message_id // "confirmed"' <<< "$response")"
             message_ids="$(jq -c '.message_ids // [.message_id]' <<< "$response")"
             thread_id="$(jq -r '.thread_id // "unknown"' <<< "$response")"
-            expires_at="$(jq -r '.expires_at // "unknown"' <<< "$response")"
+            expires_at="$(jq -r '.expires_at // .reply_expires_at // "unknown"' <<< "$response")"
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram v5.2 delivered successfully. Message ID: $message_id; Message IDs: $message_ids; Thread ID: $thread_id; Reply window expires: $expires_at"
           fi
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
