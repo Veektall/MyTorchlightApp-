@@ -22,8 +22,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Extract PocketPilot source
-        run: tar -xzf pocketpilot-project.tgz
+      - name: Assemble PocketPilot source
+        run: |
+          chmod +x pocketpilot-bootstrap.sh
+          ./pocketpilot-bootstrap.sh
       - name: Build debug APK
         working-directory: pocketpilot
         run: gradle --no-daemon assembleDebug

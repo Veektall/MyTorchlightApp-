@@ -1,0 +1,129 @@
+package com.pocketpilot.app;
+
+import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
+import android.app.Activity;
+import android.app.Dialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.CountDownTimer;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.Space;
+import android.widget.Switch;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
+
+public class MainActivity extends Activity {
+    private static final int PRIMARY = Color.rgb(91,95,239);
+    private static final int PRIMARY_DARK = Color.rgb(73,77,223);
+    private static final int GREEN = Color.rgb(21,184,151);
+    private static final int CANVAS = Color.rgb(246,247,251);
+    private static final int SURFACE = Color.WHITE;
+    private static final int INK = Color.rgb(23,32,51);
+    private static final int MUTED = Color.rgb(108,116,134);
+    private static final int BORDER = Color.rgb(230,233,240);
+    private static final int PALE_GREEN = Color.rgb(232,248,244);
+    private static final int PALE_PURPLE = Color.rgb(236,236,255);
+    private static final String PREFS = "pocketpilot";
+    private static final String CHANNEL = "focus";
+
+    private FrameLayout root;
+    private SharedPreferences prefs;
+    private CountDownTimer countDownTimer;
+    private long remainingMs = 25 * 60 * 1000L;
+    private boolean timerRunning = false;
+    private CircleTimerView circleTimerView;
+    private TextView timerText;
+    private LinearLayout focusScreen;
+
+    @Override public void onCreate(Bundle b) {
+        super.onCreate(b);
+        getWindow().setStatusBarColor(CANVAS);
+        getWindow().setNavigationBarColor(CANVAS);
+        if (Build.VERSION.SDK_INT >= 23) getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        createNotificationChannel();
+        requestNotificationPermissionIfNeeded();
+        root = new FrameLayout(this);
+        root.setBackgroundColor(CANVAS);
+        setContentView(root);
+        showSplash();
+    }
+
+    private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+    private GradientDrawable bg(int color, float radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color); g.setCornerRadius(dp(radiusDp)); return g;
+    }
+    private GradientDrawable bgStroke(int color, float radiusDp, int strokeColor) {
+        GradientDrawable g = bg(color, radiusDp); g.setStroke(dp(1), strokeColor); return g;
+    }
+    private TextView tv(String s, float sp, int color, boolean bold) {
+        TextView t = new TextView(this); t.setText(s); t.setTextColor(color); t.setTextSize(sp); t.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        t.setTypeface(Typeface.create("sans", bold?Typeface.BOLD:Typeface.NORMAL)); t.setIncludeFontPadding(false); return t;
+    }
+    private LinearLayout vbox() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
+    private LinearLayout hbox() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); return l; }
+    private Space space(int h) { Space s = new Space(this); s.setLayoutParams(new LinearLayout.LayoutParams(1, dp(h))); return s; }
+    private void pad(View v, int l, int t, int r, int b) { v.setPadding(dp(l),dp(t),dp(r),dp(b)); }
+
+    private Button button(String label, int color, int textColor) {
+        Button b = new Button(this); b.setText(label); b.setTextSize(15); b.setTextColor(textColor); b.setAllCaps(false); b.setTypeface(Typeface.DEFAULT_BOLD); b.setBackground(bg(color,18)); b.setStateListAnimator(null); b.setMinHeight(0); b.setMinWidth(0); return b;
+    }
+    private TextView pill(String label, int fill, int color) {
+        TextView p = tv(label, 12, color, true); p.setGravity(Gravity.CENTER); p.setBackground(bg(fill, 20)); pad(p,14,8,14,8); return p;
+    }
+    private LinearLayout card() { LinearLayout l=vbox(); l.setBackground(bgStroke(SURFACE,22,BORDER)); l.setElevation(dp(2)); pad(l,20,18,20,18); return l; }
+
+    private ScrollView shell(LinearLayout body) {
+        ScrollView s = new ScrollView(this); s.setFillViewport(true); s.setBackgroundColor(CANVAS); s.addView(body,new ScrollView.LayoutParams(-1,-2)); return s;
+    }
+
+    private void replace(View next, boolean forward) {
+        if (root.getChildCount()==0) { root.addView(next,new FrameLayout.LayoutParams(-1,-1)); return; }
+        View old = root.getChildAt(root.getChildCount()-1);
+        next.setAlpha(0f); next.setTranslationX(forward?dp(24):-dp(24)); root.addView(next,new FrameLayout.LayoutParams(-1,-1));
+        next.animate().alpha(1f).translationX(0).setDuration(320).setInterpolator(new DecelerateInterpolator()).start();
+        old.animate().alpha(0f).translationX(forward?-dp(22):dp(22)).setDuration(260).setListener(new AnimatorListenerAdapter(){@Override public void onAnimationEnd(Animator a){root.removeView(old);}}).start();
+    }
+
+    private void showSplash() {
+        FrameLayout s = new FrameLayout(this); s.setBackgroundColor(PRIMARY);
+        TextView glow = tv("",1,Color.WHITE,false); glow.setBackground(bg(Color.argb(32,255,255,255),100));

@@ -1,0 +1,30 @@
+    private View buildProfile(){LinearLayout body=vbox();pad(body,24,30,24,20);body.setBackgroundColor(CANVAS);body.addView(tv("PocketPilot",28,INK,true));body.addView(tv("Local-first personal focus companion",13,MUTED,false));body.addView(space(30));LinearLayout stats=card();stats.addView(tv("On this phone",12,MUTED,false));stats.addView(space(8));stats.addView(tv(prefs.getInt("sessions",0)+" focus sessions",20,INK,true));stats.addView(tv(prefs.getInt("focusMinutes",0)+" focused minutes",14,MUTED,false));body.addView(stats,new LinearLayout.LayoutParams(-1,dp(130)));body.addView(space(18));LinearLayout privacy=card();privacy.addView(tv("Privacy",14,INK,true));privacy.addView(space(6));TextView copy=tv("PocketPilot stores your tasks, reflections, and stats locally on this device. No sign-in and no cloud account are required.",13,MUTED,false);copy.setLineSpacing(dp(4),1);privacy.addView(copy);body.addView(privacy,new LinearLayout.LayoutParams(-1,dp(140)));body.addView(space(24));Button reset=button("Reset onboarding",Color.WHITE,PRIMARY);reset.setBackground(bgStroke(Color.WHITE,18,BORDER));body.addView(reset,new LinearLayout.LayoutParams(-1,dp(52)));reset.setOnClickListener(v->{prefs.edit().putBoolean("onboarded",false).apply();Toast.makeText(this,"Onboarding will show next launch",Toast.LENGTH_SHORT).show();});body.addView(space(40));body.addView(bottomNav(3),new LinearLayout.LayoutParams(-1,dp(72)));return shell(body);}
+
+    private int completedCount(){int c=0;for(int i=1;i<=3;i++)if(prefs.getBoolean("done"+i,i==1))c++;return c;}
+
+    private void createNotificationChannel(){if(Build.VERSION.SDK_INT>=26){NotificationChannel ch=new NotificationChannel(CHANNEL,"Focus timer",NotificationManager.IMPORTANCE_DEFAULT);ch.setDescription("PocketPilot focus completion alerts");((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);}}
+    private void requestNotificationPermissionIfNeeded(){if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},99);}
+    private void notifyFocusDone(){try{NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);Intent i=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,0,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);android.app.Notification.Builder b=Build.VERSION.SDK_INT>=26?new android.app.Notification.Builder(this,CHANNEL):new android.app.Notification.Builder(this);b.setContentTitle("Focus block complete").setContentText("Nice work. Your 25-minute PocketPilot session is done.").setSmallIcon(android.R.drawable.ic_popup_reminder).setContentIntent(pi).setAutoCancel(true);nm.notify(25,b.build());}catch(Exception ignored){}}
+
+    @Override protected void onDestroy(){super.onDestroy();if(countDownTimer!=null)countDownTimer.cancel();}
+
+    private class CircleTimerView extends View {
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG); float progress=0f; RectF r=new RectF();
+        CircleTimerView(Context c){super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
+        @Override protected void onDraw(Canvas c){super.onDraw(c);float cx=getWidth()/2f,cy=getHeight()/2f,rad=Math.min(cx,cy)-dp(16);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(13));p.setStrokeCap(Paint.Cap.ROUND);p.setColor(Color.rgb(224,226,236));c.drawCircle(cx,cy,rad,p);p.setColor(PRIMARY);r.set(cx-rad,cy-rad,cx+rad,cy+rad);c.drawArc(r,-90,360*Math.max(.02f,progress),false,p);p.setStyle(Paint.Style.FILL);p.setColor(INK);p.setTypeface(Typeface.create("sans",Typeface.BOLD));p.setTextSize(dp(25));p.setTextAlign(Paint.Align.CENTER);c.drawText(formatTime(remainingMs),cx,cy+dp(4),p);p.setTypeface(Typeface.DEFAULT);p.setTextSize(dp(11));p.setColor(MUTED);c.drawText("of 25:00",cx,cy+dp(28),p);}
+    }
+
+    private class MiniBarsView extends View {
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);int total=0;Random rand=new Random(7);
+        MiniBarsView(Context c){super(c);pad(this,16,16,16,16);}
+        @Override protected void onDraw(Canvas c){super.onDraw(c);int w=getWidth(),h=getHeight();String[] d={"M","T","W","T","F","S","S"};int base=h-dp(28);for(int i=0;i<7;i++){float x=dp(28)+i*(w-dp(56))/7f;float max=dp(112);float bh=dp(38)+(i*17%73)+Math.min(dp(35),total);p.setColor(PRIMARY);p.setAlpha(185);RectF rr=new RectF(x,base-Math.min(max,bh),x+dp(22),base);c.drawRoundRect(rr,dp(8),dp(8),p);p.setAlpha(255);p.setColor(MUTED);p.setTextSize(dp(10));p.setTextAlign(Paint.Align.CENTER);c.drawText(d[i],x+dp(11),base+dp(20),p);}}
+    }
+
+    private class ConfettiView extends View {
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);List<Particle> parts=new ArrayList<>();ValueAnimator anim;Random r=new Random();
+        ConfettiView(Context c){super(c);setClickable(false);for(int i=0;i<42;i++)parts.add(new Particle());}
+        void start(){anim=ValueAnimator.ofFloat(0,1);anim.setDuration(1800);anim.addUpdateListener(a->{float f=(float)a.getAnimatedValue();for(Particle q:parts){q.y=q.sy+f*dp(420)+f*f*dp(180);q.x=q.sx+(float)Math.sin(f*6+q.phase)*dp(38);}setAlpha(1-f*.75f);invalidate();});anim.start();}
+        @Override protected void onDraw(Canvas c){super.onDraw(c);int[] cols={PRIMARY,GREEN,Color.rgb(244,114,182),Color.rgb(251,191,36)};for(int i=0;i<parts.size();i++){Particle q=parts.get(i);p.setColor(cols[i%cols.length]);c.save();c.rotate(q.rot,q.x,q.y);c.drawRoundRect(new RectF(q.x,q.y,q.x+dp(7),q.y+dp(14)),dp(2),dp(2),p);c.restore();}}
+        class Particle{float sx=r.nextInt(Math.max(1,getResources().getDisplayMetrics().widthPixels));float sy=-r.nextInt(dp(180));float x=sx,y=sy,phase=r.nextFloat()*6,rot=r.nextFloat()*180;}
+    }
+}

@@ -1,0 +1,48 @@
+        FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(dp(190),dp(190),Gravity.CENTER); gp.topMargin=-dp(150); s.addView(glow,gp);
+        TextView logo = tv("PP",28,Color.WHITE,true); logo.setGravity(Gravity.CENTER); logo.setBackground(bg(Color.argb(55,255,255,255),24));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(72),dp(72),Gravity.CENTER); lp.topMargin=-dp(140); s.addView(logo,lp);
+        TextView title=tv("PocketPilot",30,Color.WHITE,true); title.setGravity(Gravity.CENTER); FrameLayout.LayoutParams tp=new FrameLayout.LayoutParams(-1,dp(50),Gravity.CENTER); tp.topMargin=dp(20); tp.leftMargin=dp(40);tp.rightMargin=dp(40);s.addView(title,tp);
+        TextView tag=tv("Plan. Focus. Finish calmly.",14,Color.rgb(230,231,255),false); tag.setGravity(Gravity.CENTER); FrameLayout.LayoutParams tg=new FrameLayout.LayoutParams(-1,dp(40),Gravity.CENTER); tg.topMargin=dp(85);tg.leftMargin=dp(40);tg.rightMargin=dp(40);s.addView(tag,tg);
+        root.addView(s,new FrameLayout.LayoutParams(-1,-1));
+        logo.setScaleX(.65f);logo.setScaleY(.65f);glow.setScaleX(.55f);glow.setScaleY(.55f);title.setAlpha(0);tag.setAlpha(0);
+        logo.animate().scaleX(1.15f).scaleY(1.15f).setDuration(650).setInterpolator(new AccelerateDecelerateInterpolator()).withEndAction(()->logo.animate().scaleX(1).scaleY(1).setDuration(250).start()).start();
+        glow.animate().scaleX(1.65f).scaleY(1.65f).alpha(.6f).setDuration(950).start();
+        title.animate().alpha(1).setStartDelay(380).setDuration(500).start(); tag.animate().alpha(1).setStartDelay(560).setDuration(500).start();
+        s.postDelayed(() -> { if (prefs.getBoolean("onboarded",false)) replace(buildHome(),true); else replace(buildOnboarding(),true); }, 1650);
+    }
+
+    private View buildOnboarding() {
+        LinearLayout body=vbox(); pad(body,24,36,24,30); body.setBackgroundColor(CANVAS);
+        LinearLayout hero=card(); hero.setBackground(bg(Color.rgb(239,240,255),30)); hero.setMinimumHeight(dp(285));
+        TextView mini1=pill("Top 3 for today",Color.WHITE,INK); mini1.setTextSize(15); mini1.setGravity(Gravity.CENTER); hero.addView(mini1,new LinearLayout.LayoutParams(dp(150),dp(62)));
+        Space sp=new Space(this); hero.addView(sp,new LinearLayout.LayoutParams(1,dp(48)));
+        TextView mini2=pill("25 min deep focus",Color.WHITE,INK); mini2.setTextSize(15); hero.addView(mini2,new LinearLayout.LayoutParams(dp(170),dp(62)));
+        body.addView(hero,new LinearLayout.LayoutParams(-1,dp(286))); body.addView(space(42));
+        body.addView(tv("Make today feel\nlighter.",32,INK,true)); body.addView(space(20));
+        TextView p=tv("PocketPilot helps you choose what matters, focus on it, and close the day without carrying everything in your head.",15,MUTED,false); p.setLineSpacing(dp(5),1); body.addView(p); body.addView(space(70));
+        Button go=button("Get started",PRIMARY,Color.WHITE); body.addView(go,new LinearLayout.LayoutParams(-1,dp(56))); go.setOnClickListener(v->replace(buildDailySetup(),true));
+        body.addView(space(18)); TextView foot=tv("No account needed • Your data stays on this phone",12,MUTED,false); foot.setGravity(Gravity.CENTER); body.addView(foot);
+        return shell(body);
+    }
+
+    private View labeledTaskInput(String n, String value, String sub, int fill, EditText[] holder, int idx) {
+        LinearLayout row=hbox(); row.setGravity(Gravity.CENTER_VERTICAL); row.setBackground(bgStroke(SURFACE,18,BORDER)); pad(row,14,12,14,12);
+        TextView badge=tv(n,14,PRIMARY,true); badge.setGravity(Gravity.CENTER); badge.setBackground(bg(fill,12)); row.addView(badge,new LinearLayout.LayoutParams(dp(36),dp(36)));
+        LinearLayout right=vbox(); pad(right,14,0,0,0); EditText e=new EditText(this); e.setText(value); e.setTextSize(15);e.setTextColor(INK);e.setSingleLine(true);e.setBackgroundColor(Color.TRANSPARENT);e.setPadding(0,0,0,0); right.addView(e,new LinearLayout.LayoutParams(-1,dp(30))); right.addView(tv(sub,11,MUTED,false)); row.addView(right,new LinearLayout.LayoutParams(0,dp(48),1)); holder[idx]=e; return row;
+    }
+
+    private View buildDailySetup() {
+        LinearLayout body=vbox(); pad(body,24,34,24,28); body.setBackgroundColor(CANVAS);
+        body.addView(tv("Good morning, Victor",26,INK,true)); body.addView(tv("What would make today a win?",14,MUTED,false)); body.addView(space(40)); body.addView(tv("Choose your top 3",15,INK,true)); body.addView(space(14));
+        EditText[] e=new EditText[3];
+        String p1=prefs.getString("p1","Finish scholarship draft"),p2=prefs.getString("p2","Review app prototype"),p3=prefs.getString("p3","30 min exercise");
+        body.addView(labeledTaskInput("1",p1,"High impact",Color.rgb(239,240,255),e,0),new LinearLayout.LayoutParams(-1,dp(72))); body.addView(space(12));
+        body.addView(labeledTaskInput("2",p2,"45 min",Color.rgb(239,240,255),e,1),new LinearLayout.LayoutParams(-1,dp(72))); body.addView(space(12));
+        body.addView(labeledTaskInput("3",p3,"Personal",Color.rgb(239,240,255),e,2),new LinearLayout.LayoutParams(-1,dp(72))); body.addView(space(28));
+        body.addView(tv("Energy today",15,INK,true)); body.addView(space(12)); LinearLayout energy=hbox(); energy.setGravity(Gravity.CENTER); String[] es={"Low","Steady","High"}; for(int i=0;i<3;i++){TextView c=pill(es[i],i==1?PRIMARY:Color.WHITE,i==1?Color.WHITE:MUTED);LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,dp(40),1);if(i>0)cp.leftMargin=dp(8);energy.addView(c,cp);}body.addView(energy);
+        body.addView(space(26)); body.addView(tv("Available focus time",15,INK,true)); body.addView(space(10)); LinearLayout focus=card(); focus.setOrientation(LinearLayout.HORIZONTAL); focus.setGravity(Gravity.CENTER_VERTICAL);focus.addView(tv("2 h 30 min",18,INK,true),new LinearLayout.LayoutParams(0,dp(40),1));focus.addView(tv("Edit",13,PRIMARY,true),new LinearLayout.LayoutParams(dp(50),dp(40)));body.addView(focus,new LinearLayout.LayoutParams(-1,dp(64)));
+        body.addView(space(30)); Button go=button("Build my day",PRIMARY,Color.WHITE); body.addView(go,new LinearLayout.LayoutParams(-1,dp(56))); go.setOnClickListener(v->{prefs.edit().putString("p1",e[0].getText().toString().trim()).putString("p2",e[1].getText().toString().trim()).putString("p3",e[2].getText().toString().trim()).putBoolean("onboarded",true).apply();replace(buildHome(),true);});
+        return shell(body);
+    }
+
+    private LinearLayout progressCard() {

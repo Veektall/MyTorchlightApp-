@@ -1,0 +1,29 @@
+        LinearLayout c=vbox(); c.setBackground(bg(PRIMARY,24)); pad(c,20,18,20,18);
+        int completed=completedCount(); c.addView(tv("DAY PROGRESS",11,Color.rgb(217,218,255),true)); c.addView(space(8)); c.addView(tv(completed+" of 3 priorities",23,Color.WHITE,true)); c.addView(space(4)); c.addView(tv(completed>=2?"You’re ahead of your planned pace.":"One focused block can change the day.",13,Color.rgb(236,236,255),false)); c.addView(space(28));
+        FrameLayout bar=new FrameLayout(this); TextView track=tv("",1,Color.TRANSPARENT,false);track.setBackground(bg(Color.rgb(119,122,242),4));bar.addView(track,new FrameLayout.LayoutParams(-1,dp(8)));TextView fill=tv("",1,Color.TRANSPARENT,false);fill.setBackground(bg(Color.WHITE,4));FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(0,dp(8));fp.width=dp((float)(292*Math.max(0.06,completed/3.0)));bar.addView(fill,fp);c.addView(bar,new LinearLayout.LayoutParams(-1,dp(8))); return c;
+    }
+
+    private View buildHome() {
+        LinearLayout body=vbox(); pad(body,24,28,24,18); body.setBackgroundColor(CANVAS);
+        LocalDate now=LocalDate.now(); String date=now.format(DateTimeFormatter.ofPattern("EEEE • d MMM", Locale.ENGLISH));
+        body.addView(tv("Today",28,INK,true)); body.addView(tv(date,13,MUTED,false)); body.addView(space(22)); body.addView(progressCard(),new LinearLayout.LayoutParams(-1,dp(176))); body.addView(space(30)); body.addView(tv("Next up",14,INK,true)); body.addView(space(10));
+        LinearLayout next=card(); next.setOrientation(LinearLayout.HORIZONTAL); next.setGravity(Gravity.CENTER_VERTICAL);
+        TextView play=tv("▶",18,GREEN,true);play.setGravity(Gravity.CENTER);play.setBackground(bg(PALE_GREEN,16));next.addView(play,new LinearLayout.LayoutParams(dp(54),dp(54)));
+        LinearLayout copy=vbox();pad(copy,16,0,0,0);copy.addView(tv(prefs.getString("p2","Review app prototype"),15,INK,true));copy.addView(tv("Focus block • 25 min",12,MUTED,false));next.addView(copy,new LinearLayout.LayoutParams(0,dp(58),1));TextView start=tv("Start",12,PRIMARY,true);start.setGravity(Gravity.CENTER);next.addView(start,new LinearLayout.LayoutParams(dp(54),dp(42)));next.setOnClickListener(v->replace(buildTaskDetail(2),true));body.addView(next,new LinearLayout.LayoutParams(-1,dp(104)));
+        body.addView(space(30)); body.addView(tv("Your priorities",14,INK,true)); body.addView(space(8));
+        addPriorityRow(body,1,prefs.getString("p1","Finish scholarship draft"),prefs.getBoolean("done1",true)); addPriorityRow(body,2,prefs.getString("p2","Review app prototype"),prefs.getBoolean("done2",false)); addPriorityRow(body,3,prefs.getString("p3","30 min exercise"),prefs.getBoolean("done3",false));
+        String extra=prefs.getString("extra",""); if(!extra.isEmpty()){body.addView(space(4)); TextView ex=tv("＋  "+extra,13,INK,false);pad(ex,4,10,4,10);body.addView(ex);}
+        body.addView(space(18)); Button close=button("Close today",Color.WHITE,PRIMARY);close.setBackground(bgStroke(Color.WHITE,18,BORDER));body.addView(close,new LinearLayout.LayoutParams(-1,dp(48)));close.setOnClickListener(v->replace(buildReflection(),true)); body.addView(space(18));
+        LinearLayout nav=bottomNav(0);body.addView(nav,new LinearLayout.LayoutParams(-1,dp(72)));
+        FrameLayout wrap=new FrameLayout(this);wrap.addView(shell(body),new FrameLayout.LayoutParams(-1,-1));Button fab=button("+",Color.rgb(17,24,39),Color.WHITE);fab.setTextSize(28);FrameLayout.LayoutParams fbp=new FrameLayout.LayoutParams(dp(60),dp(60),Gravity.BOTTOM|Gravity.END);fbp.setMargins(0,0,dp(24),dp(94));wrap.addView(fab,fbp);fab.setElevation(dp(10));fab.setOnClickListener(v->showQuickAdd());return wrap;
+    }
+
+    private void addPriorityRow(LinearLayout body,int n,String label,boolean done) {
+        LinearLayout r=hbox();r.setGravity(Gravity.CENTER_VERTICAL);pad(r,4,9,4,9);TextView num=tv(done?"✓":String.valueOf(n),14,done?GREEN:PRIMARY,true);num.setGravity(Gravity.CENTER);r.addView(num,new LinearLayout.LayoutParams(dp(30),dp(34)));TextView lab=tv(label,13,done?MUTED:INK,!done);r.addView(lab,new LinearLayout.LayoutParams(0,dp(34),1));r.setOnClickListener(v->{prefs.edit().putBoolean("done"+n,!done).apply();replace(buildHome(),false);});body.addView(r);
+    }
+
+    private LinearLayout bottomNav(int selected) {
+        LinearLayout nav=hbox();nav.setGravity(Gravity.CENTER);nav.setBackground(bgStroke(Color.WHITE,22,BORDER));String[] labels={"⌂\nHome","✓\nTasks","◷\nFocus","◎\nProfile"};for(int i=0;i<4;i++){TextView n=tv(labels[i],11,i==selected?PRIMARY:MUTED,true);n.setGravity(Gravity.CENTER);n.setLineSpacing(dp(2),1);final int ix=i;nav.addView(n,new LinearLayout.LayoutParams(0,-1,1));n.setOnClickListener(v->{if(ix==0)replace(buildHome(),false);else if(ix==1)replace(buildTasks(),true);else if(ix==2)startFocus();else replace(buildProfile(),true);});}return nav;
+    }
+
+    private void showQuickAdd() {
