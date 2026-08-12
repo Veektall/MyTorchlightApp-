@@ -1,0 +1,50 @@
+name: Telegram status relay
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  id-token: write
+
+jobs:
+  relay:
+    if: startsWith(github.event.issue.title, 'telegram-status:') && github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Deliver encrypted Telegram status
+        env:
+          ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-status-relay
+          SEALED: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() {
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram relay failed."
+            exit 1
+          }
+          trap fail ERR
+
+          jq -e '.v == 1 and (.wrapped_key | type == "string") and (.iv | type == "string") and (.ciphertext | type == "string")' <<< "$SEALED" >/dev/null
+
+          token_response="$(curl --fail-with-body -sS --max-time 20 \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=telegram-status-relay")"
+          oidc="$(jq -r '.value // empty' <<< "$token_response")"
+          test -n "$oidc"
+
+          payload="$(jq -n --argjson sealed "$SEALED" '{sealed:$sealed}')"
+          response="$(curl --fail-with-body -sS --max-time 30 -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer $oidc" \
+            -H "Content-Type: application/json" \
+            -d "$payload")"
+          test "$(jq -r '.ok // false' <<< "$response")" = "true"
+
+          message_id="$(jq -r '.message_id // "confirmed"' <<< "$response")"
+          trap - ERR
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Telegram delivered successfully. Message ID: $message_id"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
