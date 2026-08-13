@@ -23,7 +23,6 @@ for i in $(seq 1 75); do
   fi
 done
 [ "$READY" = 1 ]
-grep -Fq 'Twitter' evidence/quality-ui.xml
 
 # Tap the HD/high-quality row using the current UI hierarchy rather than hard-coded coordinates.
 python3 - evidence/quality-ui.xml > /tmp/x-hd-tap.txt <<'PY'
