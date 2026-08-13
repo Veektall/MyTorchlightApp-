@@ -1,0 +1,50 @@
+name: Grab public X extractor probe
+
+on:
+  push:
+    branches:
+      - grab-public-e2e
+    paths:
+      - .github/workflows/grab-public-x-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  x-extractor-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install current yt-dlp
+        run: |
+          python -m pip install --upgrade yt-dlp
+          yt-dlp --version
+      - name: Resolve exact X fixture without downloading media
+        env:
+          X_TEST_URL: https://x.com/i/status/2087805066656813190
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          yt-dlp --simulate --dump-single-json --no-playlist "$X_TEST_URL" > evidence/x-info.json 2> evidence/yt-dlp.log || {
+            yt-dlp --simulate --dump-single-json --no-playlist --extractor-args 'twitter:api=syndication' "$X_TEST_URL" > evidence/x-info.json 2>> evidence/yt-dlp.log
+          }
+          python - <<'PY'
+          import json
+          p='evidence/x-info.json'
+          j=json.load(open(p,encoding='utf-8'))
+          assert j.get('extractor_key','').lower().startswith('twitter') or 'twitter' in j.get('extractor','').lower(), j.get('extractor_key')
+          assert j.get('id'), 'missing id'
+          assert j.get('formats'), 'missing formats'
+          open('evidence/result.txt','w').write('X_EXACT_FIXTURE_EXTRACTOR_PASS\nID='+str(j.get('id'))+'\nEXTRACTOR='+str(j.get('extractor_key') or j.get('extractor'))+'\nFORMATS='+str(len(j.get('formats') or []))+'\n')
+          PY
+          cat evidence/result.txt
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-x-public-probe-evidence
+          path: evidence/
+          retention-days: 3
+          if-no-files-found: warn
