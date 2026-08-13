@@ -63,9 +63,17 @@ select public.telegram_private_mirror_v532(
 
 The fallback reads Telegram credentials from Supabase Vault server-side, splits long text into safe chunks, sends directly to Telegram, registers every verified Telegram message ID in `telegram_reply_windows`, and is restricted to privileged service execution. Its production HTTP path uses a 5-second connect timeout, 10-second request timeout, and up to three bounded retries for transient network errors, 5xx responses, or 429 responses.
 
+## Telegram-native formatting
+
+Do not dump raw ChatGPT Markdown into Telegram. Production v5.3.2 now renders the private mirror through a conservative Telegram HTML layer before `sendMessage`. It safely escapes raw HTML and preserves useful presentation semantics including headings as bold text, bold emphasis, inline code, fenced code blocks, bullets, and blockquotes.
+
+Pass the complete normal ChatGPT response to the backend renderer rather than manually inventing Telegram escaping. A live formatting smoke test was delivered as Telegram message 1870 with `format=telegram_html`.
+
 ## Cross-chat source of truth
 
-Future project chats should load the current Telegram skill from the shared `Skills for chatgpt` registry. The Drive entry is `telegram status ping skill v5.3.2`. This file is the versioned GitHub backup. `.telegram-relay/skills/CURRENT.md` points to the active version.
+The stable user-wide registry file is now a full Drive file named `skill.md` inside the `Telegram Status Ping Skill` folder. Crucially, it preserves the same Drive file ID that the `Skills for chatgpt` spreadsheet already referenced, so existing registry links automatically resolve to the updated canonical skill without a spreadsheet rewrite. Versioned skill files remain rollback/audit copies.
+
+This GitHub file is the versioned v5.3.2 override. `.telegram-relay/skills/CURRENT.md` points to the active version, and `.telegram-relay/skills/skill.md` is the stable GitHub loader.
 
 ## Live proof
 
@@ -73,7 +81,9 @@ On 2026-08-13, Telegram message 1836 opened a 600-second window. ChatGPT stayed 
 
 Cross-chat/backward-compatibility proof: after opening Telegram message 1848, the legacy `telegram_wait_for_followup(..., 10)` signature returned `waiting` with 544 seconds remaining only after the hardened long-poll floor, proving production—not just this chat's prompt—enforces the longer slice. A reproduced 1-second Telegram connection timeout on the private fallback was then corrected with the bounded timeout/retry migration and the same delivery path succeeded.
 
-Natural-expiry proof: Telegram message 1856 opened a dedicated no-reply acceptance window. The same ChatGPT turn stayed active through every bounded poll for the complete 600 seconds and ended only when `telegram_wait_for_followup` returned `expired` with `seconds_remaining=0`. This verifies the no-reply terminal path that v5.3.0 previously failed to sustain.
+Natural-expiry proof: Telegram message 1856 opened a dedicated no-reply acceptance window. The same ChatGPT turn stayed active through every bounded poll for the complete 600 seconds and ended only when `telegram_wait_for_followup` returned `expired` with `seconds_remaining=0`.
+
+Cross-chat proof: a separate GROK chat opened thread `8e3f55cb-3e8a-4708-81fa-8c3da660281c`. The user's Telegram reply `Cross-chat test: explain point 3 in more detail.` was captured and consumed there, and the separate pickup acknowledgement was verified as Telegram message 1861. This confirms the live-tail workflow persists across chats inside the project rather than depending on the original conversation state.
 
 Mental checksum:
 
