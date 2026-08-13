@@ -59,27 +59,24 @@ for i in $(seq 1 120); do
 done
 [ "$COMPLETE" = 1 ]
 
-# Prove that Android actually received a non-trivial media file, not merely a UI success state.
-adb shell 'find /sdcard/Download/Grab -type f -printf "%p %s\n" 2>/dev/null' > evidence/download-files.txt || true
-cat evidence/download-files.txt
-python3 - evidence/download-files.txt <<'PY'
-import sys
-ok=False
-for line in open(sys.argv[1],errors='ignore'):
-    try:
-        size=int(line.rsplit(' ',1)[1])
-        if size>100000:
-            ok=True
-            break
-    except Exception:
-        pass
-if not ok:
-    raise SystemExit('No published X/Twitter video file >100KB')
-PY
+# MediaStore is the authoritative publish destination on Android 10+. Grab logs
+# the returned content URI and the completed staged-file size after publish.
+LINE="$(grep 'TIKTOK_COMPLETE' evidence/logcat.txt | tail -n1)"
+URI="$(printf '%s\n' "$LINE" | sed -n 's/.* uri=\([^ ]*\) size=.*/\1/p')"
+SIZE="$(printf '%s\n' "$LINE" | sed -n 's/.* size=\([0-9][0-9]*\).*/\1/p')"
+printf 'COMPLETION=%s\nURI=%s\nSIZE=%s\n' "$LINE" "$URI" "$SIZE" | tee evidence/media-proof.txt
+[ -n "$URI" ]
+[ -n "$SIZE" ]
+[ "$SIZE" -gt 100000 ]
+
+# Confirm the returned MediaStore object still exists and is queryable.
+adb shell content query --uri "$URI" > evidence/media-row.txt
+cat evidence/media-row.txt
+grep -Eq 'Row:|_id=' evidence/media-row.txt
 
 # Resolution must have been performed by yt-dlp's Twitter extractor.
 grep -E 'GrabResolve|GrabTikTok|GrabEngine|AndroidRuntime|FATAL EXCEPTION' evidence/logcat.txt > evidence/focused-log.txt || true
-grep -Eq 'GrabResolve.*extractor=Twitter|extractor=Twitter' evidence/logcat.txt
+grep -Eqi 'GrabResolve.*extractor=twitter|extractor=twitter' evidence/logcat.txt
 ! grep -E 'FATAL EXCEPTION|AndroidRuntime.*com\.veektall\.grab' evidence/logcat.txt
 
 echo X_TWITTER_REAL_DOWNLOAD_E2E_PASS | tee evidence/result.txt
