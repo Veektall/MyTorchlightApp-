@@ -1,0 +1,67 @@
+name: Grab public APK route inspect
+
+on:
+  push:
+    branches:
+      - grab-public-e2e
+    paths:
+      - .github/workflows/grab-public-apk-inspect.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch verified Grab x86_64 APK
+        run: |
+          set -Eeuo pipefail
+          curl -fL --retry 3 --connect-timeout 20 --max-time 180 'https://tempfile.org/jYETc6AXzB8/download' -o /tmp/grab.apk
+          echo '9e3fa24b6347ab0f5738d966b11e560b575bc22ce0b48b1027ea42418b5685d9  /tmp/grab.apk' | sha256sum -c -
+      - name: Decode APK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool
+          apktool d -f /tmp/grab.apk -o /tmp/grab-dec >/tmp/apktool.log
+      - name: Extract downloader route evidence
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          cp /tmp/apktool.log evidence/apktool.log
+          MAIN="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
+          SVC="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
+          test -n "$MAIN" && test -n "$SVC"
+          python - "$MAIN" "$SVC" <<'PY'
+          from pathlib import Path
+          import re,sys
+          needles=['platformName','startTikTokDownload','enqueueResolved','enqueueResolvedBackground','isTikTokSource','workflowTikTok','TikTok','twitter','x.com']
+          out=[]
+          for fn in sys.argv[1:]:
+              lines=Path(fn).read_text(errors='ignore').splitlines()
+              out.append('=== '+fn+' ===')
+              hits=[]
+              for i,line in enumerate(lines):
+                  if any(n.lower() in line.lower() for n in needles): hits.append(i)
+              seen=set()
+              for i in hits:
+                  a=max(0,i-14); b=min(len(lines),i+28)
+                  key=(a,b)
+                  if key in seen: continue
+                  seen.add(key)
+                  out.append(f'--- lines {a+1}-{b} ---')
+                  out.extend(f'{j+1:06d}: {lines[j]}' for j in range(a,b))
+          Path('evidence/routes.txt').write_text('\n'.join(out),encoding='utf-8')
+          PY
+          grep -E -i 'platformName|startTikTokDownload|isTikTokSource|workflowTikTok|twitter|x\.com' evidence/routes.txt | head -n 120
+      - name: Upload inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-v32-compiled-route-inspection
+          path: evidence/
+          retention-days: 3
+          if-no-files-found: warn
