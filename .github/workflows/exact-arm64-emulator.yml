@@ -30,6 +30,7 @@ jobs:
           E=evidence-api${{ matrix.api }}
           uname -a | tee "$E/host.txt"
           ls -l /dev/kvm | tee "$E/kvm.txt"
+          chmod +x ci/exact-apk-test.sh
           curl -fL --retry 4 --retry-delay 2 --max-time 240 "$APK_URL" -o Grab.apk
           sha256sum Grab.apk | tee "$E/apk-sha.txt"
           test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
@@ -54,43 +55,7 @@ jobs:
           disk-size: 8G
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
-          script: |
-            set -eu
-            E=evidence-api${{ matrix.api }}
-            adb wait-for-device
-            adb shell getprop > "$E/getprop.txt"
-            adb shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.enable.native.bridge.exec; getprop ro.dalvik.vm.isa.arm64' | tee "$E/device-summary.txt"
-            adb logcat -c
-            if adb install -r -t Grab.apk > "$E/install.txt" 2>&1; then
-              cat "$E/install.txt"
-            else
-              cat "$E/install.txt"
-              adb logcat -d > "$E/logcat-install.txt"
-              exit 21
-            fi
-            grep -q 'Success' "$E/install.txt"
-            adb shell pm path "$PACKAGE" | tee "$E/pm-path.txt"
-            adb shell am force-stop "$PACKAGE"
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$E/launch.txt"
-            sleep 8
-            adb shell pidof "$PACKAGE" | tee "$E/pid-launch.txt"
-            test -s "$E/pid-launch.txt"
-            adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' | tee "$E/focus.txt" || true
-            adb shell uiautomator dump /sdcard/ui.xml || true
-            adb pull /sdcard/ui.xml "$E/ui.xml" || true
-            adb exec-out screencap -p > "$E/launch.png"
-            adb logcat -d > "$E/logcat-launch.txt"
-            if grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' "$E/logcat-launch.txt"; then exit 31; fi
-            adb shell 'ping -c 1 1.1.1.1' | tee "$E/ping.txt"
-            adb shell input keyevent KEYCODE_HOME
-            sleep 4
-            adb shell pidof "$PACKAGE" | tee "$E/pid-home.txt" || true
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$E/relaunch.txt"
-            sleep 4
-            adb shell pidof "$PACKAGE" | tee "$E/pid-relaunch.txt"
-            test -s "$E/pid-relaunch.txt"
-            adb exec-out screencap -p > "$E/relaunch.png"
-            adb logcat -d > "$E/logcat-final.txt"
+          script: bash ci/exact-apk-test.sh ${{ matrix.api }}
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
