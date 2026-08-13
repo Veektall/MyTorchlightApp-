@@ -1,0 +1,110 @@
+name: Redroid Modules Extra POC
+on:
+  push:
+    branches: [android-cloud-lab-poc-v3c-modules-extra]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  modules-extra:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APK_URL: https://tempfile.org/GZb8b6h1qJS/download
+      EXPECTED_SHA256: d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd9e819dea3c7d52
+      PACKAGE: com.veektall.grab
+      SERIAL: 127.0.0.1:5555
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install matching Azure extra modules and Binder
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          KVER=$(uname -r)
+          echo "$KVER" | tee evidence/kernel.txt
+          sudo apt-get update
+          apt-cache policy "linux-modules-extra-$KVER" | tee evidence/modules-extra-policy.txt
+          sudo apt-get install -y adb "linux-modules-extra-$KVER"
+          find /lib/modules/$KVER -iname '*binder*' -o -iname '*ashmem*' | tee evidence/android-modules.txt
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          lsmod | grep binder_linux | tee evidence/binder-lsmod.txt
+          grep binder /proc/filesystems | tee evidence/binder-filesystem.txt
+          ls -l /dev/binder /dev/hwbinder /dev/vndbinder | tee evidence/binder-devices.txt
+      - name: Boot Redroid Android 16
+        shell: bash
+        run: |
+          set -euxo pipefail
+          T0=$(date +%s)
+          docker pull redroid/redroid:16.0.0_64only-latest >/dev/null
+          echo "pull_plus_start_begin=$(date -u +%FT%TZ)" | tee evidence/timing.txt
+          docker run -d --rm --privileged --name redroid16 -p 5555:5555 \
+            redroid/redroid:16.0.0_64only-latest \
+            androidboot.use_memfd=1 androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 androidboot.redroid_height=1280 androidboot.redroid_dpi=320 \
+            ro.product.cpu.abilist=x86_64,arm64-v8a \
+            ro.product.cpu.abilist64=x86_64,arm64-v8a \
+            ro.dalvik.vm.isa.arm64=x86_64 \
+            ro.enable.native.bridge.exec=1 ro.enable.native.bridge.exec64=1 \
+            ro.dalvik.vm.native.bridge=libndk_translation.so
+          for i in $(seq 1 90); do
+            adb connect "$SERIAL" || true
+            if [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = 1
+          echo "boot_total_seconds=$(( $(date +%s)-T0 ))" | tee -a evidence/timing.txt
+          adb -s "$SERIAL" shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.enable.native.bridge.exec; getprop ro.dalvik.vm.isa.arm64' | tee evidence/device.txt
+          adb -s "$SERIAL" shell 'ls -l /system/lib64/libndk_translation.so /system/bin/arm64 2>/dev/null || true' | tee evidence/native-bridge-files.txt
+      - name: Verify exact ARM64 APK, install and launch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 4 --max-time 240 "$APK_URL" -o Grab.apk
+          sha256sum Grab.apk | tee evidence/apk-sha.txt
+          test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
+          unzip -l Grab.apk | grep 'lib/' | tee evidence/native-libs.txt
+          test "$(unzip -l Grab.apk | grep -c 'lib/arm64-v8a/')" -gt 0
+          test "$(unzip -l Grab.apk | grep -c 'lib/x86_64/' || true)" -eq 0
+          adb -s "$SERIAL" logcat -c
+          adb -s "$SERIAL" install -r -t Grab.apk 2>&1 | tee evidence/install.txt
+          adb -s "$SERIAL" shell pm path "$PACKAGE" | tee evidence/pm-path.txt
+          adb -s "$SERIAL" shell am force-stop "$PACKAGE"
+          adb -s "$SERIAL" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee evidence/launch.txt
+          sleep 8
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-launch.txt
+          test -s evidence/pid-launch.txt
+          adb -s "$SERIAL" shell uiautomator dump /sdcard/ui.xml || true
+          adb -s "$SERIAL" pull /sdcard/ui.xml evidence/ui.xml || true
+          adb -s "$SERIAL" exec-out screencap -p > evidence/launch.png
+          adb -s "$SERIAL" logcat -d > evidence/logcat-launch.txt
+          ! grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' evidence/logcat-launch.txt
+      - name: Prove network/background/relaunch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb -s "$SERIAL" shell 'ping -c 1 1.1.1.1' | tee evidence/ping.txt
+          adb -s "$SERIAL" shell input keyevent KEYCODE_HOME
+          sleep 4
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-home.txt || true
+          adb -s "$SERIAL" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee evidence/relaunch.txt
+          sleep 4
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-relaunch.txt
+          test -s evidence/pid-relaunch.txt
+          adb -s "$SERIAL" exec-out screencap -p > evidence/relaunch.png
+          adb -s "$SERIAL" logcat -d > evidence/logcat-final.txt
+      - name: Diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          docker ps -a > evidence/docker-ps.txt
+          docker logs redroid16 > evidence/redroid.log 2>&1 || true
+          lsmod > evidence/lsmod-all.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules-extra-redroid-grab
+          path: evidence
+          retention-days: 7
