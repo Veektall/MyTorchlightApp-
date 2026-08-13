@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq apktool
-          apktool d -f /tmp/grab.apk -o /tmp/grab-dec >/tmp/decode.log
+          apktool d -f -r /tmp/grab.apk -o /tmp/grab-dec >/tmp/decode.log
           MAIN="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
           SVC="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
           python grab-e2e/patch_x_support_v2.py "$MAIN" "$SVC" | tee /tmp/patch.txt
