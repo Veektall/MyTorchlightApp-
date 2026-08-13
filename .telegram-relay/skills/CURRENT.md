@@ -10,3 +10,7 @@ Load, in order:
 Shared cross-chat registry: Google Drive spreadsheet **Skills for chatgpt** -> row **telegram status ping skill v5.3.2**.
 
 Critical invariant: while `telegram_wait_for_followup(...)` returns `waiting`, do not emit the terminal/final ChatGPT response. Use ~50-second bounded polls until the 600-second window returns `received` or verified `expired`.
+
+Production compatibility guard: requests below 45 seconds, including legacy `(..., 10)` calls, automatically use a 45-second floor with a 55-second ceiling.
+
+Production private mirror fallback uses server-side Vault credentials, registers reply windows, and has bounded retries for transient Telegram delivery failures.
