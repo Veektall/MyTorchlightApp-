@@ -10,13 +10,11 @@ adb wait-for-device
 adb shell getprop > "$E/getprop.txt"
 adb shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge' | tee "$E/device-summary.txt"
 
-# Install the exact signed ARM64-only release artifact.
 adb install -r -t Grab.apk 2>&1 | tee "$E/install.txt"
 grep -q Success "$E/install.txt"
 adb shell pm path "$PKG" | tee "$E/pm-path.txt"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 
-# Launch cleanly and verify the real quality UI.
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$ACT" | tee "$E/start.txt"
 sleep 3
@@ -64,7 +62,6 @@ PY
 echo QUALITY_DIALOG_ALL_THREE_AND_HD_SELECTED | tee "$E/quality-pass.txt"
 adb exec-out screencap -p > "$E/quality-selected.png"
 
-# Send the exact live TikTok fixture. Do not background until the foreground service actually starts.
 adb logcat -c
 adb shell am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "$URL" -n "$ACT" | tee "$E/tiktok-intent-start.txt"
 STARTED=0; COMPLETE=0
@@ -77,7 +74,6 @@ done
 [[ "$STARTED" == 1 ]] || { echo TIKTOK_SERVICE_NEVER_STARTED; grep -E 'GrabResolve|GrabTikTok|GrabEngine|AndroidRuntime|FATAL EXCEPTION' "$E/logcat-current.txt" | tail -300; exit 61; }
 echo TIKTOK_SERVICE_STARTED | tee "$E/service-start-pass.txt"
 
-# Prove actual background operation.
 adb shell input keyevent KEYCODE_HOME
 sleep 3
 adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' | tee "$E/focus-after-home.txt" || true
@@ -96,7 +92,6 @@ grep -E 'GrabResolve|GrabTikTok|GrabDownload|GrabEngine|AndroidRuntime|FATAL EXC
 [[ "$COMPLETE" == 1 ]] || { echo TIKTOK_BACKGROUND_DOWNLOAD_DID_NOT_COMPLETE; tail -300 "$E/logcat-focused.txt"; exit 62; }
 grep 'GrabTikTok.*TIKTOK_COMPLETE' "$E/logcat-complete.txt" | tail -1 | tee "$E/tiktok-complete-line.txt"
 
-# Verify the MediaStore-published file exists and is substantive.
 adb shell 'find /sdcard/Download/Grab -type f -printf "%p %s\n" 2>/dev/null' | tee "$E/download-files.txt" || true
 python3 - "$E/download-files.txt" <<'PY'
 import sys
@@ -112,7 +107,6 @@ PY
 if grep -E 'FATAL EXCEPTION|Process: com\.veektall\.grab.*has died|AndroidRuntime.*com\.veektall\.grab' "$E/logcat-complete.txt"; then exit 63; fi
 echo TIKTOK_HD_BACKGROUND_MEDIASTORE_PASS | tee "$E/download-pass.txt"
 
-# Relaunch and inspect the app's Downloads history.
 adb shell am start -W -n "$ACT" | tee "$E/relaunch.txt"
 sleep 2
 adb shell uiautomator dump /sdcard/relaunch.xml >/dev/null
@@ -134,17 +128,30 @@ adb shell uiautomator dump /sdcard/downloads.xml >/dev/null
 adb pull /sdcard/downloads.xml "$E/downloads.xml" >/dev/null
 adb exec-out screencap -p > "$E/downloads.png"
 python3 - "$E/downloads.xml" > "$E/downloads-text.txt" <<'PY'
-import sys,xml.etree.ElementTree as ET
-nodes=[]
-for n in ET.parse(sys.argv[1]).getroot().iter('node'):
+import re,sys,xml.etree.ElementTree as ET
+root=ET.parse(sys.argv[1]).getroot(); nodes=[]; target=None
+for n in root.iter('node'):
     t=n.attrib.get('text','').strip(); d=n.attrib.get('content-desc','').strip()
     if t or d:
         print('TEXT='+repr(t)+' DESC='+repr(d)+' CLASS='+n.attrib.get('class','')+' BOUNDS='+n.attrib.get('bounds',''))
         nodes.append((t,d,n.attrib))
+    if n.attrib.get('clickable')=='true' and n.attrib.get('class')=='android.widget.LinearLayout':
+        b=n.attrib.get('bounds',''); m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',b)
+        if m:
+            x1,y1,x2,y2=map(int,m.groups())
+            if y1>=400 and y2-y1>=150: target=((x1+x2)//2,(y1+y2)//2)
 flat=' '.join((t+' '+d).lower() for t,d,_ in nodes)
 if 'no downloads' in flat or 'no download yet' in flat: raise SystemExit('Downloads tab still says empty')
-if 'tiktok' not in flat and 'saved' not in flat and '.mp4' not in flat:
-    raise SystemExit('No visible downloaded TikTok/media record in Downloads UI')
+if 'tiktok' not in flat and 'saved' not in flat and '.mp4' not in flat: raise SystemExit('No visible downloaded TikTok/media record in Downloads UI')
+if not target: raise SystemExit('Clickable downloaded media row not found')
+open(sys.argv[1]+'.tap','w').write(f'{target[0]} {target[1]}\n')
 PY
+read RX RY < "$E/downloads.xml.tap"
+adb shell input tap "$RX" "$RY"
+sleep 3
+adb shell dumpsys activity activities > "$E/player-activity.txt"
+adb exec-out screencap -p > "$E/player.png"
+grep -q 'com.veektall.grab/.PlayerActivity' "$E/player-activity.txt"
+echo DOWNLOADS_HISTORY_PLAYER_PASS | tee "$E/player-pass.txt"
 
-echo GRAB_EXACT_ARM64_ANDROID16_E2E_PASS | tee "$E/final-pass.txt"
+echo GRAB_X86_ANDROID16_FULL_E2E_PASS | tee "$E/final-pass.txt"
