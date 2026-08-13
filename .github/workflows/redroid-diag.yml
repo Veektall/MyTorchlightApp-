@@ -1,0 +1,70 @@
+name: Redroid BinderFS Diagnostic
+on:
+  push:
+    branches: [android-cloud-lab-poc-v3f-redroid-diag]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare binderfs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          KVER=$(uname -r)
+          sudo apt-get update
+          sudo apt-get install -y adb "linux-modules-extra-$KVER"
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          sudo mkdir -p /dev/binderfs
+          sudo mount -t binder binder /dev/binderfs
+          sudo chmod 666 /dev/binderfs/binder /dev/binderfs/hwbinder /dev/binderfs/vndbinder
+          ls -la /dev/binderfs | tee evidence/binderfs.txt
+          grep -E 'CONFIG_(ANDROID_BINDER|MEMFD|DMABUF|ION|IPV6)' /boot/config-$(uname -r) | tee evidence/kernel-config.txt || true
+          ls -l /dev/dma_heap /dev/dri /dev/ion 2>&1 | tee evidence/device-prereqs.txt || true
+      - name: Start Redroid and capture 45-second diagnostics
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker pull redroid/redroid:16.0.0_64only-latest >/dev/null
+          docker run -d --name redroid16 --privileged -p 5555:5555 \
+            --device /dev/binderfs/binder:/dev/binder \
+            --device /dev/binderfs/hwbinder:/dev/hwbinder \
+            --device /dev/binderfs/vndbinder:/dev/vndbinder \
+            redroid/redroid:16.0.0_64only-latest \
+            androidboot.use_memfd=1 androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 androidboot.redroid_height=1280 androidboot.redroid_dpi=320 \
+            ro.product.cpu.abilist=x86_64,arm64-v8a \
+            ro.product.cpu.abilist64=x86_64,arm64-v8a \
+            ro.dalvik.vm.isa.arm64=x86_64 \
+            ro.enable.native.bridge.exec=1 ro.enable.native.bridge.exec64=1 \
+            ro.dalvik.vm.native.bridge=libndk_translation.so | tee evidence/container-id.txt
+          for i in $(seq 1 15); do
+            sleep 3
+            echo "=== sample $i ===" | tee -a evidence/adb-samples.txt
+            adb connect 127.0.0.1:5555 2>&1 | tee -a evidence/adb-samples.txt || true
+            adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>&1 | tee -a evidence/adb-samples.txt || true
+            docker ps -a --no-trunc | tee evidence/docker-ps-$i.txt
+          done
+          docker logs redroid16 > evidence/redroid.log 2>&1 || true
+          docker inspect redroid16 > evidence/redroid-inspect.json 2>&1 || true
+          sudo dmesg | tail -500 > evidence/dmesg-tail.txt || true
+          sudo journalctl -k -n 500 > evidence/kernel-journal.txt || true
+          if adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -q '^1$'; then
+            adb -s 127.0.0.1:5555 shell getprop > evidence/getprop.txt
+            echo REDROID_BOOTED | tee evidence/verdict.txt
+          else
+            echo REDROID_NOT_BOOTED_45S | tee evidence/verdict.txt
+            exit 20
+          fi
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-binderfs-diagnostics
+          path: evidence
+          retention-days: 7
