@@ -1,0 +1,27 @@
+name: Derive unsigned ARM64 Grab X v2
+
+on:
+  push:
+    branches: [grab-public-arm64-x]
+    paths:
+      - .github/workflows/grab-x-arm64-derive-unsigned-v2.yml
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  derive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Derive unsigned ARM64 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash grab-e2e/derive_arm64_from_green.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grab-v32-x-arm64-derived-unsigned-v2
+          path: /tmp/grab-arm64-derived/out/
+          retention-days: 3
