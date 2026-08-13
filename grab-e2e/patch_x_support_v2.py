@@ -44,21 +44,24 @@ insert = '''    const-string v1, "x.com"
 m = m.replace(snap, insert + snap, 1)
 main = main[:a] + m + main[b:]
 
-for signature, bundle_reg, tmp_reg, label in [
-    ("enqueueResolved(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V", "v8", "v2", "grab_progressive_fg"),
-    ("enqueueResolvedBackground(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V", "v3", "v6", "grab_progressive_bg"),
+# Final ARM64 v3.2 already contains the TikTok foreground-service fix. Its inspected
+# production bytecode uses v2 for the comparison/result, v3 for bundle.platform and
+# p2 for the ResolvedBundle in both foreground and background routes.
+for signature, label in [
+    ("enqueueResolved(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V", "grab_progressive_fg"),
+    ("enqueueResolvedBackground(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V", "grab_progressive_bg"),
 ]:
     a, b, m = method_span(main, signature)
-    p = m.index('const-string v0, "TikTok"')
-    needle = "    if-eqz v0, :cond_1"
+    p = m.index('const-string v2, "TikTok"')
+    needle = "    if-eqz v2, :cond_1"
     q = m.index(needle, p)
-    route = f'''    if-nez v0, :{label}
+    route = f'''    if-nez v2, :{label}
 
-    const-string v0, "Twitter"
-    iget-object {tmp_reg}, {bundle_reg}, Lcom/veektall/grab/MainActivity$ResolvedBundle;->platform:Ljava/lang/String;
-    invoke-virtual {{v0, {tmp_reg}}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-    move-result v0
-    if-eqz v0, :cond_1
+    const-string v2, "Twitter"
+    iget-object v3, p2, Lcom/veektall/grab/MainActivity$ResolvedBundle;->platform:Ljava/lang/String;
+    invoke-virtual {{v2, v3}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    move-result v2
+    if-eqz v2, :cond_1
 
     :{label}'''
     m = m[:q] + route + m[q + len(needle):]
