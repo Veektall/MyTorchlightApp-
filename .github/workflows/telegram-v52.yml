@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Deliver encrypted Telegram v5.2 payload
         env:
-          UNIFIED_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v52
+          UNIFIED_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-unified-relay-v532
           CONTROL_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-v52-control
           INLINE_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-inline-document-v52
           LARGE_ENDPOINT: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/telegram-large-file-link-v52
