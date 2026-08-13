@@ -1,0 +1,136 @@
+name: Android Cloud Lab POC v2
+
+on:
+  push:
+    branches: [android-cloud-lab-poc-v2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redroid16-64only-grab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SERIAL: 127.0.0.1:5555
+      PACKAGE: com.veektall.grab
+      APK_URL: https://tempfile.org/GZb8b6h1qJS/download
+      EXPECTED_SHA256: d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd9e819dea3c7d52
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host probe
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          date -u +%FT%TZ | tee evidence/start.txt
+          uname -a | tee evidence/uname.txt
+          command -v adb || true
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
+          sudo modprobe ashmem_linux || true
+          { grep binder /proc/filesystems || true; grep ashmem /proc/misc || true; find /dev -maxdepth 2 -iname '*binder*' -o -iname '*ashmem*' || true; } | tee evidence/kernel.txt
+          if ! command -v adb >/dev/null; then sudo apt-get update && sudo apt-get install -y adb; fi
+      - name: Pull Redroid 16 64-only with measured timeout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          T0=$(date +%s)
+          timeout 420 docker pull redroid/redroid:16.0.0_64only-latest 2>&1 | tee evidence/docker-pull.txt
+          echo "pull_seconds=$(( $(date +%s) - T0 ))" | tee evidence/pull-seconds.txt
+          docker image inspect redroid/redroid:16.0.0_64only-latest > evidence/image.json
+      - name: Boot Android 16 and prove ADB
+        shell: bash
+        run: |
+          set -euxo pipefail
+          T0=$(date +%s)
+          docker run -d --rm --privileged --name redroid16 -p 5555:5555 \
+            redroid/redroid:16.0.0_64only-latest \
+            androidboot.use_memfd=1 \
+            androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            ro.product.cpu.abilist=x86_64,arm64-v8a \
+            ro.product.cpu.abilist64=x86_64,arm64-v8a \
+            ro.dalvik.vm.isa.arm64=x86_64 \
+            ro.enable.native.bridge.exec=1 \
+            ro.enable.native.bridge.exec64=1 \
+            ro.dalvik.vm.native.bridge=libndk_translation.so | tee evidence/container-id.txt
+          for i in $(seq 1 90); do
+            adb connect "$SERIAL" || true
+            if [ "$(adb -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb -s "$SERIAL" shell getprop sys.boot_completed | tr -d '\r')" = 1
+          echo "boot_seconds=$(( $(date +%s) - T0 ))" | tee evidence/boot-seconds.txt
+          adb -s "$SERIAL" shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.enable.native.bridge.exec; getprop ro.dalvik.vm.isa.arm64' | tee evidence/device.txt
+          adb -s "$SERIAL" shell 'ls -l /system/lib64/libndk_translation.so /system/lib64/libnb.so /system/bin/arm64 2>/dev/null || true' | tee evidence/nativebridge.txt
+      - name: Verify and install exact ARM64 Grab APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 4 --retry-delay 2 --max-time 240 "$APK_URL" -o Grab.apk
+          sha256sum Grab.apk | tee evidence/apk-sha.txt
+          test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
+          unzip -l Grab.apk | grep 'lib/' | tee evidence/native-libs.txt
+          test "$(unzip -l Grab.apk | grep -c 'lib/arm64-v8a/')" -gt 0
+          test "$(unzip -l Grab.apk | grep -c 'lib/x86_64/' || true)" -eq 0
+          adb -s "$SERIAL" logcat -c
+          adb -s "$SERIAL" install -r -t Grab.apk 2>&1 | tee evidence/install.txt
+          adb -s "$SERIAL" shell pm path "$PACKAGE" | tee evidence/pm-path.txt
+      - name: Launch exact APK and inspect UI/process
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb -s "$SERIAL" shell am force-stop "$PACKAGE"
+          adb -s "$SERIAL" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee evidence/launch.txt
+          sleep 8
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-launch.txt
+          test -s evidence/pid-launch.txt
+          adb -s "$SERIAL" shell uiautomator dump /sdcard/ui.xml || true
+          adb -s "$SERIAL" pull /sdcard/ui.xml evidence/ui.xml || true
+          adb -s "$SERIAL" shell screencap -p /sdcard/ui.png
+          adb -s "$SERIAL" pull /sdcard/ui.png evidence/ui.png
+          adb -s "$SERIAL" logcat -d > evidence/logcat-launch.txt
+          ! grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' evidence/logcat-launch.txt
+      - name: Prove network + background + relaunch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb -s "$SERIAL" shell 'ping -c 1 1.1.1.1' | tee evidence/ping.txt
+          adb -s "$SERIAL" shell input keyevent KEYCODE_HOME
+          sleep 4
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-home.txt || true
+          adb -s "$SERIAL" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee evidence/relaunch.txt
+          sleep 4
+          adb -s "$SERIAL" shell pidof "$PACKAGE" | tee evidence/pid-relaunch.txt
+          test -s evidence/pid-relaunch.txt
+          adb -s "$SERIAL" shell screencap -p /sdcard/relaunch.png
+          adb -s "$SERIAL" pull /sdcard/relaunch.png evidence/relaunch.png
+          adb -s "$SERIAL" logcat -d > evidence/logcat-final.txt
+      - name: Summarize
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "completed_utc=$(date -u +%FT%TZ)"
+            echo "runner=$(uname -m)"
+            cat evidence/pull-seconds.txt 2>/dev/null
+            cat evidence/boot-seconds.txt 2>/dev/null
+            echo "android=$(adb -s "$SERIAL" shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
+            echo "sdk=$(adb -s "$SERIAL" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+            echo "abilist=$(adb -s "$SERIAL" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')"
+            echo "bridge=$(adb -s "$SERIAL" shell getprop ro.dalvik.vm.native.bridge 2>/dev/null | tr -d '\r')"
+            echo "package=$(adb -s "$SERIAL" shell pm path "$PACKAGE" 2>/dev/null | tr -d '\r')"
+            echo "pid=$(adb -s "$SERIAL" shell pidof "$PACKAGE" 2>/dev/null | tr -d '\r')"
+          } | tee evidence/summary.txt
+          docker logs redroid16 > evidence/redroid.log 2>&1 || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid16-64only-grab-evidence
+          path: evidence
+          retention-days: 7
