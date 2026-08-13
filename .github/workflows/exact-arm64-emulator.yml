@@ -1,0 +1,100 @@
+name: Exact ARM64 APK Emulator POC
+
+on:
+  push:
+    branches: [android-cloud-lab-poc-v4-emulator]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-apk:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 36]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APK_URL: https://tempfile.org/GZb8b6h1qJS/download
+      EXPECTED_SHA256: d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd9e819dea3c7d52
+      PACKAGE: com.veektall.grab
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare KVM and exact APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence-api${{ matrix.api }}
+          E=evidence-api${{ matrix.api }}
+          uname -a | tee "$E/host.txt"
+          ls -l /dev/kvm | tee "$E/kvm.txt"
+          sudo usermod -a -G kvm $USER || true
+          curl -fL --retry 4 --retry-delay 2 --max-time 240 "$APK_URL" -o Grab.apk
+          sha256sum Grab.apk | tee "$E/apk-sha.txt"
+          test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
+          unzip -l Grab.apk | grep 'lib/' | tee "$E/native-libs.txt"
+          test "$(unzip -l Grab.apk | grep -c 'lib/arm64-v8a/')" -gt 0
+          test "$(unzip -l Grab.apk | grep -c 'lib/x86_64/' || true)" -eq 0
+      - name: Enable KVM permissions
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot emulator and test exact ARM64 APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euxo pipefail
+            E=evidence-api${{ matrix.api }}
+            adb wait-for-device
+            adb shell getprop > "$E/getprop.txt"
+            adb shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.enable.native.bridge.exec; getprop ro.dalvik.vm.isa.arm64' | tee "$E/device-summary.txt"
+            adb logcat -c
+            set +e
+            adb install -r -t Grab.apk 2>&1 | tee "$E/install.txt"
+            IRC=${PIPESTATUS[0]}
+            set -e
+            adb shell pm path "$PACKAGE" | tee "$E/pm-path.txt" || true
+            adb logcat -d > "$E/logcat-install.txt"
+            if [ "$IRC" -ne 0 ]; then exit "$IRC"; fi
+            adb shell pm path "$PACKAGE" | grep -q '^package:'
+            adb shell am force-stop "$PACKAGE"
+            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$E/launch.txt"
+            sleep 8
+            adb shell pidof "$PACKAGE" | tee "$E/pid-launch.txt"
+            test -s "$E/pid-launch.txt"
+            adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' | tee "$E/focus.txt" || true
+            adb shell uiautomator dump /sdcard/ui.xml || true
+            adb pull /sdcard/ui.xml "$E/ui.xml" || true
+            adb exec-out screencap -p > "$E/launch.png"
+            adb logcat -d > "$E/logcat-launch.txt"
+            ! grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' "$E/logcat-launch.txt"
+            adb shell 'ping -c 1 1.1.1.1' | tee "$E/ping.txt"
+            adb shell input keyevent KEYCODE_HOME
+            sleep 4
+            adb shell pidof "$PACKAGE" | tee "$E/pid-home.txt" || true
+            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$E/relaunch.txt"
+            sleep 4
+            adb shell pidof "$PACKAGE" | tee "$E/pid-relaunch.txt"
+            test -s "$E/pid-relaunch.txt"
+            adb exec-out screencap -p > "$E/relaunch.png"
+            adb logcat -d > "$E/logcat-final.txt"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-arm64-emulator-api${{ matrix.api }}
+          path: evidence-api${{ matrix.api }}
+          retention-days: 7
