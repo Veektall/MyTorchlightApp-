@@ -1,0 +1,1 @@
+PocketPilot Figma-faithful Android build completed locally. Final APK is available in ChatGPT. Telegram binary attachment staging will follow separately if transport permits.
