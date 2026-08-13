@@ -56,11 +56,16 @@ jobs:
 
       - name: Boot Android 29 and install
         run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          AVD="$SDK/cmdline-tools/latest/bin/avdmanager"
+          EMU="$SDK/emulator/emulator"
+          test -x "$SM" && test -x "$AVD" && test -x "$EMU"
           SYS='system-images;android-29;default;x86_64'
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "$SYS" >/tmp/sdk.log
-          echo no | avdmanager create avd -f -n grab29x -k "$SYS" --device pixel_2 >/tmp/avd.log
-          nohup emulator -avd grab29x -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot >/tmp/emulator.log 2>&1 &
+          yes | "$SM" --licenses >/dev/null || true
+          "$SM" "$SYS" >/tmp/sdk.log
+          echo no | "$AVD" create avd -f -n grab29x -k "$SYS" --device pixel_2 >/tmp/avd.log
+          nohup "$EMU" -avd grab29x -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot >/tmp/emulator.log 2>&1 &
           echo $! >/tmp/emulator.pid
           adb wait-for-device
           for i in $(seq 1 120); do
