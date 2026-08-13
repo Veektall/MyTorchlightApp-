@@ -1,0 +1,87 @@
+name: Public Android Companion Worker
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: public-android-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.actor == github.repository_owner && startsWith(github.event.issue.title, 'public-android-worker:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Parse constrained request
+        id: req
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          body=os.environ.get('BODY','').strip()
+          data=json.loads(body)
+          repo=data.get('repo_url','')
+          ref=data.get('ref','main')
+          task=data.get('task','android-gradle-debug')
+          if task not in {'android-gradle-debug','android-gradle-release','apk-inspect'}:
+              raise SystemExit('unsupported task')
+          if not re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?', repo):
+              raise SystemExit('repo_url must be a public github.com repository URL')
+          if not re.fullmatch(r'[A-Za-z0-9._/-]+', ref):
+              raise SystemExit('invalid ref')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'repo_url={repo}\nref={ref}\ntask={task}\n')
+          PY
+      - name: Verify repository is public
+        env:
+          REPO_URL: ${{ steps.req.outputs.repo_url }}
+        run: |
+          slug="${REPO_URL#https://github.com/}"; slug="${slug%.git}"
+          visibility="$(curl -fsSL "https://api.github.com/repos/$slug" | python -c 'import json,sys; print(json.load(sys.stdin).get("private"))')"
+          test "$visibility" = "False"
+      - name: Check out requested public project
+        env:
+          REPO_URL: ${{ steps.req.outputs.repo_url }}
+          REF: ${{ steps.req.outputs.ref }}
+        run: git clone --depth 1 --branch "$REF" "$REPO_URL" work
+      - name: Set up Java
+        if: steps.req.outputs.task != 'apk-inspect'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build Android project
+        if: steps.req.outputs.task != 'apk-inspect'
+        working-directory: work
+        env:
+          TASK: ${{ steps.req.outputs.task }}
+        run: |
+          chmod +x ./gradlew
+          if [ "$TASK" = android-gradle-release ]; then ./gradlew --no-daemon assembleRelease; else ./gradlew --no-daemon assembleDebug; fi
+      - name: Collect APKs
+        run: |
+          mkdir -p out
+          find work -type f -name '*.apk' -size +0c -print -exec cp '{}' out/ \;
+          test -n "$(find out -type f -name '*.apk' -print -quit)"
+          sha256sum out/*.apk > out/SHA256SUMS.txt
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-android-result-${{ github.run_id }}
+          path: out/
+          retention-days: 1
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Public Android worker finished with status: ${{ job.status }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
