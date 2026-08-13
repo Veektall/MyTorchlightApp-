@@ -1,0 +1,56 @@
+name: Grab Exact ARM64 Android 16 E2E
+on:
+  push:
+    branches: [android-cloud-lab-poc-v5-grab-e2e]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grab-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APK_URL: https://tempfile.org/GZb8b6h1qJS/download
+      EXPECTED_SHA256: d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd9e819dea3c7d52
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and verify exact signed ARM64-only APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          chmod +x ci/grab-e2e.sh
+          curl -fL --retry 4 --retry-delay 2 --max-time 240 "$APK_URL" -o Grab.apk
+          sha256sum Grab.apk | tee evidence/apk-sha.txt
+          test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
+          unzip -l Grab.apk | grep 'lib/' | tee evidence/native-libs.txt
+          test "$(unzip -l Grab.apk | grep -c 'lib/arm64-v8a/')" -gt 0
+          test "$(unzip -l Grab.apk | grep -c 'lib/x86_64/' || true)" -eq 0
+          ls -l /dev/kvm | tee evidence/kvm.txt
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run exact app E2E on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          script: bash ci/grab-e2e.sh
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-exact-arm64-android16-e2e-evidence
+          path: evidence
+          retention-days: 7
