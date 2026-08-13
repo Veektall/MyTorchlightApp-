@@ -5,6 +5,7 @@ on:
 permissions:
   issues: write
   contents: read
+  actions: read
 jobs:
   sign:
     if: startsWith(github.event.issue.title, 'grab-signing-session:') && github.actor == github.repository_owner
@@ -23,8 +24,10 @@ jobs:
           cleanup(){ rm -f "$W/session-private.pem" "$W/aes.key" "$W/plain.json" "$W/release.p12" "$W/password.txt"; }
           trap cleanup EXIT
           unsigned_url="$(jq -r '.unsigned_url // empty' <<< "$ISSUE_BODY")"
+          artifact_id="$(jq -r '.unsigned_artifact_id // empty' <<< "$ISSUE_BODY")"
           unsigned_sha="$(jq -r '.unsigned_sha256 // empty' <<< "$ISSUE_BODY" | tr A-F a-f)"
-          [[ "$unsigned_url" == https://* && "$unsigned_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$unsigned_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ -n "$artifact_id" || "$unsigned_url" == https://* ]]
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$W/session-private.pem" >/dev/null 2>&1
           openssl pkey -in "$W/session-private.pem" -pubout -out "$W/session-public.pem"
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "GRAB_SIGNING_SESSION_PUBLIC_KEY $(base64 -w0 "$W/session-public.pem")"
@@ -48,7 +51,14 @@ jobs:
           jq -r '.p12_b64' "$W/plain.json" | base64 -d > "$W/release.p12"
           jq -r '.password' "$W/plain.json" > "$W/password.txt"
           rm -f "$W/plain.json" "$W/wrapped.bin" "$W/aes.key" "$W/iv.bin" "$W/cipher.bin"
-          curl -fL --retry 3 --max-time 240 "$unsigned_url" -o "$W/unsigned.apk"
+          if [[ -n "$artifact_id" ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$W/unsigned-artifact.zip"
+            mkdir -p "$W/unsigned-artifact"; unzip -q "$W/unsigned-artifact.zip" -d "$W/unsigned-artifact"
+            src="$(find "$W/unsigned-artifact" -type f -name 'Grab-by-Rhoda-v3.2-X-arm64-unsigned.apk' | head -n1)"
+            [[ -n "$src" && -s "$src" ]]; cp "$src" "$W/unsigned.apk"
+          else
+            curl -fL --retry 3 --max-time 240 "$unsigned_url" -o "$W/unsigned.apk"
+          fi
           echo "$unsigned_sha  $W/unsigned.apk" | sha256sum -c -
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'build-tools;36.0.0' >/dev/null
@@ -57,11 +67,15 @@ jobs:
           "$BT/apksigner" sign --ks "$W/release.p12" --ks-key-alias grab-release --ks-pass "file:$W/password.txt" --key-pass "file:$W/password.txt" --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false --out "$W/Grab-by-Rhoda-v3.2.apk" "$W/aligned.apk"
           "$BT/zipalign" -c -P 16 -v 4 "$W/Grab-by-Rhoda-v3.2.apk" >/dev/null
           "$BT/apksigner" verify --verbose --print-certs "$W/Grab-by-Rhoda-v3.2.apk" > "$W/verify.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$W/verify.txt"
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' "$W/verify.txt"
           signer="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print tolower($2);exit}' "$W/verify.txt")"
           [[ "$signer" == b3e45007cac42ff03bec33c39429a43af5d12a946c840b9062eb09b10c51ee33 ]]
           "$BT/aapt" dump badging "$W/Grab-by-Rhoda-v3.2.apk" > "$W/badging.txt"
           grep -q "package: name='com.veektall.grab' versionCode='5' versionName='3.2'" "$W/badging.txt"
           grep -q "sdkVersion:'29'" "$W/badging.txt"; grep -q "targetSdkVersion:'36'" "$W/badging.txt"
+          unzip -l "$W/Grab-by-Rhoda-v3.2.apk" > "$W/files.txt"
+          grep -q 'lib/arm64-v8a/' "$W/files.txt"; ! grep -q 'lib/x86_64/' "$W/files.txt"
           final_sha="$(sha256sum "$W/Grab-by-Rhoda-v3.2.apk"|awk '{print $1}')"
           j="$(curl --fail --show-error --silent --max-time 240 -X POST https://tempfile.org/api/upload/local -F "files=@$W/Grab-by-Rhoda-v3.2.apk;type=application/vnd.android.package-archive" -F 'expiryHours=24')"
           id="$(jq -r 'if .success and (.files|length)>0 then .files[0].id else empty end' <<< "$j")"; [[ -n "$id" ]]
@@ -71,3 +85,8 @@ jobs:
           sha256=$final_sha
           signer_sha256=$signer"
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Grab-by-Rhoda-v3.2-final-signed
+          path: /tmp/grab-sign/Grab-by-Rhoda-v3.2.apk
+          retention-days: 3
