@@ -16,12 +16,14 @@ Use visible non-terminal updates while work continues. Finalize only after a ver
 
 ## Persistent polling behavior
 
-Production `public.telegram_wait_for_followup(uuid, integer)` now accepts a bounded wait slice up to 55 seconds. Use approximately 50-second slices:
+Production `public.telegram_wait_for_followup(uuid, integer)` has a 45-second compatibility floor and a 55-second ceiling. Use approximately 50-second slices:
 
 ```sql
 select *
 from public.telegram_wait_for_followup('THREAD_UUID'::uuid, 50);
 ```
+
+Older skill copies that still call `telegram_wait_for_followup(..., 10)` are intentionally stretched by production to at least 45 seconds. This makes the fix effective even before an older chat reloads the current skill.
 
 Interpretation:
 
@@ -33,7 +35,7 @@ missing  -> relay/state failure; report it
 late     -> not an in-window live-tail success
 ```
 
-A 600-second window therefore normally requires about 11–13 calls rather than ~60 fragile 10-second calls.
+A 600-second no-reply window therefore normally needs roughly 11–14 bounded calls instead of about 60 fragile 10-second calls.
 
 ## Pickup acknowledgement verification
 
@@ -59,7 +61,7 @@ select public.telegram_private_mirror_v532(
 );
 ```
 
-The fallback reads Telegram credentials from Supabase Vault server-side, splits long text into safe chunks, sends directly to Telegram, registers every verified Telegram message ID in `telegram_reply_windows`, and is restricted to privileged service execution.
+The fallback reads Telegram credentials from Supabase Vault server-side, splits long text into safe chunks, sends directly to Telegram, registers every verified Telegram message ID in `telegram_reply_windows`, and is restricted to privileged service execution. Its production HTTP path uses a 5-second connect timeout, 10-second request timeout, and up to three bounded retries for transient network errors, 5xx responses, or 429 responses.
 
 ## Cross-chat source of truth
 
@@ -67,8 +69,10 @@ Future project chats should load the current Telegram skill from the shared `Ski
 
 ## Live proof
 
-On 2026-08-13, Telegram message 1836 opened a 600-second window. ChatGPT stayed alive across repeated ~50-second polls. A user-initiated reply (`Test ok`) was captured in the same turn with 277 seconds remaining. The separate pickup acknowledgement was verified as Telegram message 1839. The next answer then opened a fresh 600-second window.
+On 2026-08-13, Telegram message 1836 opened a 600-second window. ChatGPT stayed alive across repeated ~50-second polls. A user-initiated reply (`Test ok`) was captured in the same turn with 277 seconds remaining. The separate pickup acknowledgement was verified as Telegram message 1839. The next answer opened a fresh 600-second window.
+
+Cross-chat/backward-compatibility proof: after opening Telegram message 1848, the legacy `telegram_wait_for_followup(..., 10)` signature returned `waiting` with 544 seconds remaining only after the hardened long-poll floor, proving production—not just this chat's prompt—enforces the longer slice. A reproduced 1-second Telegram connection timeout on the private fallback was then corrected with the bounded timeout/retry migration and the same delivery path succeeded.
 
 Mental checksum:
 
-`Answer -> verified Telegram ID -> 50s bounded polls until 600s terminal condition -> reply -> verified ✅ ack -> answer -> fresh 600s tail.`
+`Answer -> verified Telegram ID -> bounded long polls until the 600s terminal condition -> reply -> verified ✅ ack -> answer -> fresh 600s tail.`
