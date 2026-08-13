@@ -60,9 +60,13 @@ jobs:
             curl -fL --retry 3 --max-time 240 "$unsigned_url" -o "$W/unsigned.apk"
           fi
           echo "$unsigned_sha  $W/unsigned.apk" | sha256sum -c -
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'build-tools;36.0.0' >/dev/null
-          BT="$ANDROID_HOME/build-tools/36.0.0"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n1)"
+          [[ -x "$SDKMANAGER" ]]
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'build-tools;36.0.0' >/dev/null
+          BT="$SDK/build-tools/36.0.0"
+          [[ -x "$BT/zipalign" && -x "$BT/apksigner" && -x "$BT/aapt" ]]
           "$BT/zipalign" -P 16 -f 4 "$W/unsigned.apk" "$W/aligned.apk"
           "$BT/apksigner" sign --ks "$W/release.p12" --ks-key-alias grab-release --ks-pass "file:$W/password.txt" --key-pass "file:$W/password.txt" --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false --out "$W/Grab-by-Rhoda-v3.2.apk" "$W/aligned.apk"
           "$BT/zipalign" -c -P 16 -v 4 "$W/Grab-by-Rhoda-v3.2.apk" >/dev/null
