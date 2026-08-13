@@ -1,0 +1,39 @@
+name: Grab ARM64 routing inspection
+
+on:
+  push:
+    branches: [grab-public-arm64-x]
+    paths:
+      - .github/workflows/grab-arm64-routing-inspect.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      APK_PROXY_URL: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/grab-arm64-proxy-v1?k=-rq3VKRMIdH4rhliqfb0wWULRafqkt5N
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and print routing context
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl -fL --retry 3 --max-time 240 "$APK_PROXY_URL" -o /tmp/base.apk
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool
+          apktool d -f -r /tmp/base.apk -o /tmp/dec >/dev/null
+          MAIN="$(find /tmp/dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
+          SVC="$(find /tmp/dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
+          mkdir -p out
+          grep -n -A55 -B15 '"TikTok"' "$MAIN" | head -n 420 > out/main-tiktok-context.txt || true
+          grep -n -A80 -B20 'isTikTokSource' "$SVC" | head -n 320 > out/service-tiktok-context.txt || true
+          cat out/main-tiktok-context.txt
+          cat out/service-tiktok-context.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grab-arm64-routing-inspection
+          path: out/
+          retention-days: 1
