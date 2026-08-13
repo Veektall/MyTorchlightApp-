@@ -73,6 +73,8 @@ On 2026-08-13, Telegram message 1836 opened a 600-second window. ChatGPT stayed 
 
 Cross-chat/backward-compatibility proof: after opening Telegram message 1848, the legacy `telegram_wait_for_followup(..., 10)` signature returned `waiting` with 544 seconds remaining only after the hardened long-poll floor, proving production—not just this chat's prompt—enforces the longer slice. A reproduced 1-second Telegram connection timeout on the private fallback was then corrected with the bounded timeout/retry migration and the same delivery path succeeded.
 
+Natural-expiry proof: Telegram message 1856 opened a dedicated no-reply acceptance window. The same ChatGPT turn stayed active through every bounded poll for the complete 600 seconds and ended only when `telegram_wait_for_followup` returned `expired` with `seconds_remaining=0`. This verifies the no-reply terminal path that v5.3.0 previously failed to sustain.
+
 Mental checksum:
 
 `Answer -> verified Telegram ID -> bounded long polls until the 600s terminal condition -> reply -> verified ✅ ack -> answer -> fresh 600s tail.`
