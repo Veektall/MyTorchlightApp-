@@ -1,0 +1,106 @@
+name: Grab X/Twitter Android smoke v2
+
+on:
+  push:
+    branches: [grab-public-e2e]
+    paths:
+      - .github/workflows/grab-public-x-v2.yml
+      - grab-e2e/patch_x_support_v2.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      APK_URL: https://tempfile.org/jYETc6AXzB8/download
+      APK_SHA256: 9e3fa24b6347ab0f5738d966b11e560b575bc22ce0b48b1027ea42418b5685d9
+      X_TEST_URL: https://x.com/i/status/2087805066656813190
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+
+      - name: Fetch known Grab test APK
+        run: |
+          curl -fL --retry 3 --max-time 180 "$APK_URL" -o /tmp/grab.apk
+          echo "$APK_SHA256  /tmp/grab.apk" | sha256sum -c -
+
+      - name: Patch X/Twitter routing
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool
+          apktool d -f /tmp/grab.apk -o /tmp/grab-dec >/tmp/decode.log
+          MAIN="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
+          SVC="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
+          python grab-e2e/patch_x_support_v2.py "$MAIN" "$SVC" | tee /tmp/patch.txt
+          grep -q X_TWITTER_SMALI_PATCH_PASS /tmp/patch.txt
+
+      - name: Rebuild and sign test APK
+        run: |
+          apktool b /tmp/grab-dec -o /tmp/grab-x-unsigned.apk >/tmp/build.log
+          BT="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/zipalign" -f -p 4 /tmp/grab-x-unsigned.apk /tmp/grab-x-aligned.apk
+          keytool -genkeypair -keystore /tmp/test.jks -storepass android -keypass android -alias test -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Grab E2E' >/dev/null 2>&1
+          "$BT/apksigner" sign --ks /tmp/test.jks --ks-pass pass:android --key-pass pass:android --out /tmp/grab-x.apk /tmp/grab-x-aligned.apk
+          "$BT/apksigner" verify /tmp/grab-x.apk
+          sha256sum /tmp/grab-x.apk | tee /tmp/patched-sha.txt
+
+      - name: Boot Android 29 and install
+        run: |
+          SYS='system-images;android-29;default;x86_64'
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "$SYS" >/tmp/sdk.log
+          echo no | avdmanager create avd -f -n grab29x -k "$SYS" --device pixel_2 >/tmp/avd.log
+          nohup emulator -avd grab29x -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot >/tmp/emulator.log 2>&1 &
+          echo $! >/tmp/emulator.pid
+          adb wait-for-device
+          for i in $(seq 1 120); do
+            [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break
+            sleep 2
+          done
+          [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]
+          adb install --no-streaming /tmp/grab-x.apk | tee /tmp/install.txt
+          grep -q Success /tmp/install.txt
+
+      - name: Exercise exact X fixture in Grab
+        run: |
+          mkdir -p evidence
+          adb logcat -c
+          adb shell am force-stop com.veektall.grab
+          adb shell am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "$X_TEST_URL" -n com.veektall.grab/.MainActivity | tee evidence/start.txt
+          PASS=0
+          for i in $(seq 1 30); do
+            sleep 4
+            adb shell uiautomator dump /sdcard/x.xml >/dev/null 2>&1 || true
+            adb shell cat /sdcard/x.xml > evidence/ui.xml || true
+            adb logcat -d > evidence/logcat.txt
+            grep -Fq Twitter evidence/ui.xml && PASS=1 && break
+          done
+          [ "$PASS" = 1 ]
+          ! grep -E 'FATAL EXCEPTION|AndroidRuntime.*com\.veektall\.grab' evidence/logcat.txt
+          echo X_TWITTER_ANDROID_RECOGNITION_PASS | tee evidence/result.txt
+          cp /tmp/grab-x.apk evidence/Grab-by-Rhoda-v3.2-X-test.apk
+          cp /tmp/patched-sha.txt evidence/patched-sha.txt
+          cp /tmp/build.log evidence/build.log
+          cp /tmp/emulator.log evidence/emulator.log
+
+      - if: always()
+        name: Stop emulator
+        run: test -f /tmp/emulator.pid && kill "$(cat /tmp/emulator.pid)" || true
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-v32-x-test-apk-and-evidence
+          path: evidence/
+          retention-days: 3
+          if-no-files-found: warn
