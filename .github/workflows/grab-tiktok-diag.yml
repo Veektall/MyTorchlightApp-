@@ -1,0 +1,47 @@
+name: Grab TikTok Diagnostic
+on:
+  push:
+    branches: [android-cloud-lab-poc-v5b-tiktok-diag]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APK_URL: https://tempfile.org/GZb8b6h1qJS/download
+      EXPECTED_SHA256: d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd43c0ae5e3125f9bc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          curl -fL --retry 4 --max-time 240 "$APK_URL" -o Grab.apk
+          sha256sum Grab.apk | tee evidence/apk-sha.txt
+          test "$(sha256sum Grab.apk | awk '{print $1}')" = "d19f607277e09a13a2035ead55946359ca92e7a9cc1ed728cd9e819dea3c7d52"
+          chmod +x ci/grab-tiktok-diag.sh
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Diagnose live TikTok on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 4096M
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          script: bash ci/grab-tiktok-diag.sh
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grab-tiktok-diagnostic
+          path: evidence
+          retention-days: 7
