@@ -2,13 +2,16 @@ name: Grab ephemeral signing
 on:
   issues:
     types: [opened]
+  push:
+    branches: [main]
+    paths: [.github/workflows/grab-ephemeral-signing.yml]
 permissions:
   issues: write
   contents: read
   actions: read
 jobs:
   sign:
-    if: startsWith(github.event.issue.title, 'grab-signing-session:') && github.actor == github.repository_owner
+    if: (github.event_name == 'issues' && startsWith(github.event.issue.title, 'grab-signing-session:') && github.actor == github.repository_owner) || (github.event_name == 'push' && github.actor == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -21,8 +24,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           W=/tmp/grab-sign; mkdir -p "$W"
-          cleanup(){ rm -f "$W/session-private.pem" "$W/aes.key" "$W/plain.json" "$W/release.p12" "$W/password.txt"; }
+          cleanup(){ rm -f "$W/session-private.pem" "$W/aes.key" "$W/plain.json" "$W/release.p12" "$W/password.txt" "$W/wrapped.bin" "$W/iv.bin" "$W/cipher.bin"; }
           trap cleanup EXIT
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            ISSUE_BODY='{"unsigned_artifact_id":"9197108056","unsigned_sha256":"9eeaa6667af9e9a0489ca1313d4c5aef06ba8943584677537751be98090bd9b8"}'
+            ISSUE_NUMBER=119
+          fi
           unsigned_url="$(jq -r '.unsigned_url // empty' <<< "$ISSUE_BODY")"
           artifact_id="$(jq -r '.unsigned_artifact_id // empty' <<< "$ISSUE_BODY")"
           unsigned_sha="$(jq -r '.unsigned_sha256 // empty' <<< "$ISSUE_BODY" | tr A-F a-f)"
@@ -88,7 +95,6 @@ jobs:
           download_url=$url
           sha256=$final_sha
           signer_sha256=$signer"
-          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
       - uses: actions/upload-artifact@v4
         with:
           name: Grab-by-Rhoda-v3.2-final-signed
