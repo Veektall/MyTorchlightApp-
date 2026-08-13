@@ -1,0 +1,31 @@
+name: Grab public APK handoff probe
+
+on:
+  push:
+    branches:
+      - grab-public-e2e
+    paths:
+      - .github/workflows/grab-public-apk-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk-handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exported Grab x86_64 APK
+        run: |
+          set -Eeuo pipefail
+          curl -fL --retry 3 --connect-timeout 20 --max-time 180 \
+            'https://tempfile.org/jYETc6AXzB8/download' -o /tmp/grab.apk
+          test -s /tmp/grab.apk
+          stat -c 'APK_SIZE=%s' /tmp/grab.apk
+          ACTUAL="$(sha256sum /tmp/grab.apk | awk '{print $1}')"
+          echo "APK_SHA256=$ACTUAL"
+          test "$ACTUAL" = '9e3fa24b6347ab0f5738d966b11e560b575bc22ce0b48b1027ea42418b5685d9'
+          unzip -t /tmp/grab.apk >/dev/null
+          echo GRAB_PUBLIC_APK_HANDOFF_PASS
