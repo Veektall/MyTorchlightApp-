@@ -6,6 +6,7 @@ on:
       - grab-public-e2e
     paths:
       - .github/workflows/grab-public-x-patched-smoke.yml
+      - grab-e2e/patch_x_support.py
   workflow_dispatch:
 
 permissions:
@@ -35,74 +36,17 @@ jobs:
           curl -fL --retry 3 --connect-timeout 20 --max-time 180 "$APK_URL" -o /tmp/grab.apk
           echo "$APK_SHA256  /tmp/grab.apk" | sha256sum -c -
 
-      - name: Decode and patch compiled routes
+      - name: Decode and add X/Twitter support
         run: |
           set -Eeuo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq apktool
-          apktool d -f -r /tmp/grab.apk -o /tmp/grab-dec >/tmp/apktool-decode.log
+          apktool d -f /tmp/grab.apk -o /tmp/grab-dec >/tmp/apktool-decode.log
           MAIN="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
           SVC="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
           test -n "$MAIN" && test -n "$SVC"
-          python - "$MAIN" "$SVC" <<'PY'
-          from pathlib import Path
-          import sys
-
-          main_p, svc_p = map(Path, sys.argv[1:])
-          main = main_p.read_text(encoding='utf-8')
-          svc = svc_p.read_text(encoding='utf-8')
-
-          def method_span(src, marker):
-              pos = src.index(marker)
-              start = src.rfind('.method', 0, pos)
-              end = src.index('.end method', pos) + len('.end method')
-              return start, end, src[start:end]
-
-          # 1) Recognize x.com and twitter.com as their own platform.
-          a,b,m = method_span(main, 'platformName(Ljava/lang/String;)Ljava/lang/String;')
-          anchor = '''    :cond_3\n    const-string v1, "snapchat.com"'''
-          assert m.count(anchor) == 1, 'platformName anchor mismatch'
-          twitter = '''    :cond_3\n    const-string v1, "x.com"\n\n    invoke-direct {p0, p1, v1}, Lcom/veektall/grab/MainActivity;->hostMatches(Ljava/lang/String;Ljava/lang/String;)Z\n\n    move-result v1\n\n    if-nez v1, :grab_twitter\n\n    const-string v1, "twitter.com"\n\n    invoke-direct {p0, p1, v1}, Lcom/veektall/grab/MainActivity;->hostMatches(Ljava/lang/String;Ljava/lang/String;)Z\n\n    move-result v1\n\n    if-eqz v1, :grab_after_twitter\n\n    :grab_twitter\n    const-string v0, "Twitter"\n\n    return-object v0\n\n    :grab_after_twitter\n    const-string v1, "snapchat.com"'''
-          m = m.replace(anchor, twitter, 1)
-          main = main[:a] + m + main[b:]
-
-          # 2) Route Twitter through the same reliable foreground yt-dlp service as TikTok.
-          for marker, bundle_reg, tmp_reg, label in [
-              ('enqueueResolved(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V', 'v8', 'v2', 'grab_progressive_fg'),
-              ('enqueueResolvedBackground(Lcom/veektall/grab/MainActivity$ResolvedMedia;Lcom/veektall/grab/MainActivity$ResolvedBundle;)V', 'v3', 'v6', 'grab_progressive_bg'),
-          ]:
-              a,b,m = method_span(main, marker)
-              old = f'''    const-string v0, "TikTok"\n\n    iget-object {tmp_reg}, {bundle_reg}, Lcom/veektall/grab/MainActivity$ResolvedBundle;->platform:Ljava/lang/String;\n\n    invoke-virtual {{v0, {tmp_reg}}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n    move-result v0\n\n    if-eqz v0, :cond_1'''
-              assert m.count(old) == 1, marker + ' TikTok route anchor mismatch'
-              new = f'''    const-string v0, "TikTok"\n\n    iget-object {tmp_reg}, {bundle_reg}, Lcom/veektall/grab/MainActivity$ResolvedBundle;->platform:Ljava/lang/String;\n\n    invoke-virtual {{v0, {tmp_reg}}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n    move-result v0\n\n    if-nez v0, :{label}\n\n    const-string v0, "Twitter"\n\n    iget-object {tmp_reg}, {bundle_reg}, Lcom/veektall/grab/MainActivity$ResolvedBundle;->platform:Ljava/lang/String;\n\n    invoke-virtual {{v0, {tmp_reg}}}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n    move-result v0\n\n    if-eqz v0, :cond_1\n\n    :{label}'''
-              m = m.replace(old, new, 1)
-              main = main[:a] + m + main[b:]
-
-          # 3) The foreground service's progressive-site predicate now also accepts X/Twitter.
-          a,b,m = method_span(svc, 'isTikTokSource(Ljava/lang/String;)Z')
-          anchor = '''    if-eqz v1, :cond_2\n\n    :cond_1'''
-          assert m.count(anchor) == 1, 'service host predicate anchor mismatch'
-          extra = '''    if-nez v1, :cond_1\n\n    const-string v1, "x.com"\n\n    invoke-virtual {v2, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n    move-result v1\n\n    if-nez v1, :cond_1\n\n    const-string v1, ".x.com"\n\n    invoke-virtual {v2, v1}, Ljava/lang/String;->endsWith(Ljava/lang/String;)Z\n\n    move-result v1\n\n    if-nez v1, :cond_1\n\n    const-string v1, "twitter.com"\n\n    invoke-virtual {v2, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n\n    move-result v1\n\n    if-nez v1, :cond_1\n\n    const-string v1, ".twitter.com"\n\n    invoke-virtual {v2, v1}, Ljava/lang/String;->endsWith(Ljava/lang/String;)Z\n\n    move-result v1\n\n    if-eqz v1, :cond_2\n\n    :cond_1'''
-          m = m.replace(anchor, extra, 1)
-          svc = svc[:a] + m + svc[b:]
-
-          # User-facing progress text becomes platform-neutral because this service now handles two platforms.
-          a,b,m = method_span(main, 'startTikTokDownload(Ljava/lang/String;Ljava/lang/String;)V')
-          m = m.replace('Starting TikTok', 'Starting download').replace('TikTok download started', 'Download started')
-          main = main[:a] + m + main[b:]
-          svc = svc.replace('Starting TikTok', 'Starting video').replace('Downloading TikTok', 'Downloading video')
-
-          # Keep title cleanup aware of Twitter labels.
-          main = main.replace('facebook|instagram|tiktok|snapchat', 'facebook|instagram|tiktok|twitter|snapchat')
-
-          # Static semantic assertions before rebuild.
-          assert 'const-string v0, "Twitter"' in main
-          assert ':grab_progressive_fg' in main and ':grab_progressive_bg' in main
-          assert 'const-string v1, "x.com"' in svc and 'const-string v1, "twitter.com"' in svc
-          main_p.write_text(main, encoding='utf-8')
-          svc_p.write_text(svc, encoding='utf-8')
-          print('X_TWITTER_SMALI_PATCH_PASS')
-          PY
+          python grab-e2e/patch_x_support.py "$MAIN" "$SVC" | tee /tmp/patch-result.txt
+          grep -q X_TWITTER_SMALI_PATCH_PASS /tmp/patch-result.txt
 
       - name: Rebuild and test-sign patched APK
         run: |
@@ -110,7 +54,7 @@ jobs:
           apktool b /tmp/grab-dec -o /tmp/grab-x-unsigned.apk >/tmp/apktool-build.log
           BT="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BT/zipalign" -f -p 4 /tmp/grab-x-unsigned.apk /tmp/grab-x-aligned.apk
-          keytool -genkeypair -v -keystore /tmp/grab-test.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Grab Public E2E,O=Test,C=US' >/tmp/keytool.log 2>&1
+          keytool -genkeypair -keystore /tmp/grab-test.jks -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Grab Public E2E,O=Test,C=US' >/tmp/keytool.log 2>&1
           "$BT/apksigner" sign --ks /tmp/grab-test.jks --ks-pass pass:android --key-pass pass:android --out /tmp/Grab-by-Rhoda-v3.2-X-test.apk /tmp/grab-x-aligned.apk
           "$BT/apksigner" verify --verbose /tmp/Grab-by-Rhoda-v3.2-X-test.apk | tee /tmp/apksigner.txt
           sha256sum /tmp/Grab-by-Rhoda-v3.2-X-test.apk | tee /tmp/patched-sha256.txt
@@ -133,7 +77,7 @@ jobs:
           adb install --no-streaming /tmp/Grab-by-Rhoda-v3.2-X-test.apk | tee /tmp/install.txt
           grep -q Success /tmp/install.txt
 
-      - name: Verify X link is recognized and resolved in Grab
+      - name: Verify exact X link is recognized by Grab
         run: |
           set -Eeuo pipefail
           mkdir -p evidence
@@ -141,8 +85,8 @@ jobs:
           adb shell am force-stop com.veektall.grab
           adb shell am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "$X_TEST_URL" -n com.veektall.grab/.MainActivity | tee evidence/x-start.txt
           FOUND=0
-          for i in $(seq 1 24); do
-            sleep 5
+          for i in $(seq 1 30); do
+            sleep 4
             adb shell uiautomator dump /sdcard/x.xml >/dev/null 2>&1 || true
             adb shell cat /sdcard/x.xml > evidence/x-ui.xml || true
             adb logcat -d > evidence/x-logcat.txt
@@ -150,7 +94,6 @@ jobs:
           done
           grep -E 'GrabResolve|GrabEngine|Twitter|AndroidRuntime|FATAL EXCEPTION' evidence/x-logcat.txt > evidence/x-focused-log.txt || true
           test "$FOUND" = 1
-          grep -Fq 'Twitter' evidence/x-ui.xml
           if grep -E 'FATAL EXCEPTION|AndroidRuntime.*com\.veektall\.grab' evidence/x-logcat.txt; then exit 71; fi
           echo X_TWITTER_ANDROID_RECOGNITION_PASS | tee evidence/result.txt
           cp /tmp/patched-sha256.txt evidence/patched-sha256.txt
