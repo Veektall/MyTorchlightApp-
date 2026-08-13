@@ -53,11 +53,10 @@ jobs:
         run: git clone --depth 1 --branch "$REF" "$REPO_URL" work
       - name: Set up Java
         if: steps.req.outputs.task != 'apk-inspect'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
       - name: Build Android project
         if: steps.req.outputs.task != 'apk-inspect'
         working-directory: work
