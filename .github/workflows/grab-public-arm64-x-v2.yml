@@ -1,0 +1,77 @@
+name: Grab X/Twitter ARM64 release preflight v2
+
+on:
+  push:
+    branches: [grab-public-arm64-x]
+    paths:
+      - .github/workflows/grab-public-arm64-x-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      APK_PROXY_URL: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/grab-arm64-proxy-v1?k=-rq3VKRMIdH4rhliqfb0wWULRafqkt5N
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch persistent ARM64 v3.2 release base
+        run: |
+          curl -fL --retry 3 --max-time 240 "$APK_PROXY_URL" -o /tmp/grab-arm64-base.apk
+          test "$(stat -c%s /tmp/grab-arm64-base.apk)" -eq 24388188
+          sha256sum /tmp/grab-arm64-base.apk | tee /tmp/base-sha.txt
+
+      - name: Apply X/Twitter production patch
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool
+          apktool d -f -r /tmp/grab-arm64-base.apk -o /tmp/grab-dec >/tmp/decode.log
+          MAIN="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/MainActivity.smali' | head -n1)"
+          SVC="$(find /tmp/grab-dec -type f -path '*/com/veektall/grab/YouTubeDownloadService.smali' | head -n1)"
+          python grab-e2e/patch_x_support_v2.py "$MAIN" "$SVC" | tee /tmp/patch.txt
+          grep -q X_TWITTER_SMALI_PATCH_PASS /tmp/patch.txt
+          apktool b /tmp/grab-dec -o /tmp/grab-x-arm64-unsigned.apk >/tmp/build.log
+
+      - name: Verify ARM64 release metadata
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging /tmp/grab-x-arm64-unsigned.apk > /tmp/badging.txt
+          grep -q "package: name='com.veektall.grab' versionCode='5' versionName='3.2'" /tmp/badging.txt
+          grep -q "sdkVersion:'29'" /tmp/badging.txt
+          grep -q "targetSdkVersion:'36'" /tmp/badging.txt
+          unzip -l /tmp/grab-x-arm64-unsigned.apk > /tmp/files.txt
+          grep -q 'lib/arm64-v8a/' /tmp/files.txt
+          ! grep -q 'lib/x86_64/' /tmp/files.txt
+          sha256sum /tmp/grab-x-arm64-unsigned.apk | tee /tmp/unsigned-sha.txt
+
+      - name: Produce phone-installable ARM64 preflight copy
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/zipalign" -P 16 -f 4 /tmp/grab-x-arm64-unsigned.apk /tmp/grab-x-arm64-aligned.apk
+          keytool -genkeypair -keystore /tmp/test.jks -storepass android -keypass android -alias test -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Grab ARM64 Preflight' >/dev/null 2>&1
+          "$BT/apksigner" sign --ks /tmp/test.jks --ks-pass pass:android --key-pass pass:android --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false --out /tmp/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk /tmp/grab-x-arm64-aligned.apk
+          "$BT/apksigner" verify --verbose /tmp/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk
+          sha256sum /tmp/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk | tee /tmp/test-sha.txt
+
+      - name: Publish outputs
+        run: |
+          mkdir -p evidence
+          cp /tmp/grab-x-arm64-unsigned.apk evidence/Grab-by-Rhoda-v3.2-X-arm64-unsigned.apk
+          cp /tmp/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk evidence/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk
+          cp /tmp/base-sha.txt /tmp/patch.txt /tmp/build.log /tmp/badging.txt /tmp/files.txt /tmp/unsigned-sha.txt /tmp/test-sha.txt evidence/
+          upload(){ local f="$1" out="$2"; j="$(curl --fail --show-error --silent --max-time 240 -X POST https://tempfile.org/api/upload/local -F "files=@$f;type=application/vnd.android.package-archive" -F 'expiryHours=24')"; id="$(jq -r 'if .success and (.files|length)>0 then .files[0].id else empty end' <<< "$j")"; test -n "$id"; echo "https://tempfile.org/$id/download" > "$out"; }
+          upload evidence/Grab-by-Rhoda-v3.2-X-arm64-unsigned.apk evidence/unsigned-url.txt
+          upload evidence/Grab-by-Rhoda-v3.2-X-arm64-preflight.apk evidence/preflight-url.txt
+          echo GRAB_X_ARM64_RELEASE_PREFLIGHT_PASS | tee evidence/result.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grab-v32-x-arm64-release-preflight-v2
+          path: evidence/
+          retention-days: 3
