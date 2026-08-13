@@ -1,0 +1,84 @@
+name: Redroid Dynamic Binder POC
+
+on:
+  push:
+    branches: [android-cloud-lab-poc-v3-binder]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  binder-redroid:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe and install matching kernel headers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          KVER=$(uname -r)
+          echo "$KVER" | tee evidence/kernel-version.txt
+          sudo apt-get update
+          apt-cache policy "linux-headers-$KVER" | tee evidence/header-policy.txt || true
+          sudo apt-get install -y git make gcc kmod "linux-headers-$KVER"
+          test -e "/lib/modules/$KVER/build/Makefile"
+      - name: Build official Redroid binder module
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 https://github.com/remote-android/redroid-modules.git redroid-modules
+          cd redroid-modules
+          git rev-parse HEAD | tee ../evidence/redroid-modules-commit.txt
+          set +e
+          make 2>&1 | tee ../evidence/module-build.log
+          RC=${PIPESTATUS[0]}
+          set -e
+          find . -name '*.ko' -ls | tee ../evidence/module-files.txt || true
+          exit "$RC"
+      - name: Install/load binder and boot Redroid 16
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd redroid-modules
+          sudo make install 2>&1 | tee ../evidence/module-install.log
+          sudo depmod -a
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          lsmod | grep binder_linux | tee ../evidence/lsmod.txt
+          grep binder /proc/filesystems | tee ../evidence/binder-filesystem.txt
+          cd ..
+          if ! command -v adb >/dev/null; then sudo apt-get install -y adb; fi
+          docker pull redroid/redroid:16.0.0_64only-latest >/dev/null
+          docker run -d --rm --privileged --name redroid16 -p 5555:5555 \
+            redroid/redroid:16.0.0_64only-latest \
+            androidboot.use_memfd=1 androidboot.redroid_gpu_mode=guest \
+            ro.product.cpu.abilist=x86_64,arm64-v8a \
+            ro.product.cpu.abilist64=x86_64,arm64-v8a \
+            ro.dalvik.vm.isa.arm64=x86_64 \
+            ro.enable.native.bridge.exec=1 ro.enable.native.bridge.exec64=1 \
+            ro.dalvik.vm.native.bridge=libndk_translation.so
+          for i in $(seq 1 60); do
+            adb connect 127.0.0.1:5555 || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb -s 127.0.0.1:5555 shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge' | tee evidence/device.txt
+      - name: Summary and logs
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          dmesg | tail -300 > evidence/dmesg-tail.txt
+          docker logs redroid16 > evidence/redroid.log 2>&1 || true
+          lsmod > evidence/lsmod-all.txt
+          find /lib/modules/$(uname -r) -iname '*binder*' -ls > evidence/installed-binder.txt || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-binder-evidence
+          path: evidence
+          retention-days: 7
