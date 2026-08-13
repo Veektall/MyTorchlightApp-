@@ -30,7 +30,6 @@ jobs:
           E=evidence-api${{ matrix.api }}
           uname -a | tee "$E/host.txt"
           ls -l /dev/kvm | tee "$E/kvm.txt"
-          sudo usermod -a -G kvm $USER || true
           curl -fL --retry 4 --retry-delay 2 --max-time 240 "$APK_URL" -o Grab.apk
           sha256sum Grab.apk | tee "$E/apk-sha.txt"
           test "$(sha256sum Grab.apk | awk '{print $1}')" = "$EXPECTED_SHA256"
@@ -54,22 +53,23 @@ jobs:
           heap-size: 512M
           disk-size: 8G
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           script: |
-            set -euxo pipefail
+            set -eu
             E=evidence-api${{ matrix.api }}
             adb wait-for-device
             adb shell getprop > "$E/getprop.txt"
             adb shell 'getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.dalvik.vm.native.bridge; getprop ro.enable.native.bridge.exec; getprop ro.dalvik.vm.isa.arm64' | tee "$E/device-summary.txt"
             adb logcat -c
-            set +e
-            adb install -r -t Grab.apk 2>&1 | tee "$E/install.txt"
-            IRC=${PIPESTATUS[0]}
-            set -e
-            adb shell pm path "$PACKAGE" | tee "$E/pm-path.txt" || true
-            adb logcat -d > "$E/logcat-install.txt"
-            if [ "$IRC" -ne 0 ]; then exit "$IRC"; fi
-            adb shell pm path "$PACKAGE" | grep -q '^package:'
+            if adb install -r -t Grab.apk > "$E/install.txt" 2>&1; then
+              cat "$E/install.txt"
+            else
+              cat "$E/install.txt"
+              adb logcat -d > "$E/logcat-install.txt"
+              exit 21
+            fi
+            grep -q 'Success' "$E/install.txt"
+            adb shell pm path "$PACKAGE" | tee "$E/pm-path.txt"
             adb shell am force-stop "$PACKAGE"
             adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 | tee "$E/launch.txt"
             sleep 8
@@ -80,7 +80,7 @@ jobs:
             adb pull /sdcard/ui.xml "$E/ui.xml" || true
             adb exec-out screencap -p > "$E/launch.png"
             adb logcat -d > "$E/logcat-launch.txt"
-            ! grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' "$E/logcat-launch.txt"
+            if grep -E 'FATAL EXCEPTION|Fatal signal|UnsatisfiedLinkError|INSTALL_FAILED_NO_MATCHING_ABIS' "$E/logcat-launch.txt"; then exit 31; fi
             adb shell 'ping -c 1 1.1.1.1' | tee "$E/ping.txt"
             adb shell input keyevent KEYCODE_HOME
             sleep 4
