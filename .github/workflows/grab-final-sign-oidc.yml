@@ -41,8 +41,11 @@ jobs:
           OIDC="$(jq -r '.value // empty' <<< "$OIDC_JSON")"
           [[ -n "$OIDC" ]]
 
-          RESP="$(curl --fail --show-error --silent --max-time 120 -X POST "$RECOVERY_ENDPOINT" -H "Authorization: Bearer $OIDC" -H 'content-type: application/json' --data "$(jq -cn --arg p "$PUB_B64" '{pub_b64:$p}')")"
-          jq -e '.ok == true and .sealed.v == 1' <<< "$RESP" >/dev/null
+          RESP="$(curl --show-error --silent --max-time 120 -X POST "$RECOVERY_ENDPOINT" -H "Authorization: Bearer $OIDC" -H 'content-type: application/json' --data "$(jq -cn --arg p "$PUB_B64" '{pub_b64:$p}')")"
+          if ! jq -e '.ok == true and .sealed.v == 1' <<< "$RESP" >/dev/null; then
+            echo "RECOVERY_ERROR=$(jq -r '.error // "unknown recovery error"' <<< "$RESP")"
+            exit 41
+          fi
           jq -r '.sealed.wrapped_key' <<< "$RESP" | base64 -d > "$W/wrapped.bin"
           jq -r '.sealed.iv' <<< "$RESP" | base64 -d > "$W/iv.bin"
           jq -r '.sealed.ciphertext' <<< "$RESP" | base64 -d > "$W/cipher.bin"
