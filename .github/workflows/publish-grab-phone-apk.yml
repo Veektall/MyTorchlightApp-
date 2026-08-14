@@ -1,0 +1,35 @@
+name: Publish Grab phone-compatible APK
+
+on:
+  push:
+    branches: [grab-public-e2e]
+    paths:
+      - '.github/workflows/publish-grab-phone-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: grab-public-e2e
+      - name: Fetch and verify final APK
+        run: |
+          set -Eeuo pipefail
+          mkdir -p public-releases
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 15 --max-time 300 \
+            'https://tempfile.org/EPJVfuFPdiL/download' \
+            -o public-releases/Grab-by-Rhoda-v3.2-phone-compatible.apk
+          echo '633aea61214f12e23880b6a1bd43d8fa0a84b9d53c7ce72fbbde25443f99c30e  public-releases/Grab-by-Rhoda-v3.2-phone-compatible.apk' | sha256sum -c -
+      - name: Publish APK to branch
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Grab Release Bot'
+          git config user.email 'grab-release-bot@users.noreply.github.com'
+          git add -f public-releases/Grab-by-Rhoda-v3.2-phone-compatible.apk
+          git commit -m 'release: publish Grab v3.2 phone-compatible APK'
+          git push origin HEAD:grab-public-e2e
