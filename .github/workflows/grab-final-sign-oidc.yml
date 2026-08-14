@@ -1,0 +1,120 @@
+name: Grab final OIDC signing
+on:
+  push:
+    paths: ['.github/workflows/grab-final-sign-oidc.yml']
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Recover signer via GitHub OIDC and sign verified ARM64 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          W=/tmp/grab-final; rm -rf "$W"; mkdir -p "$W"
+          cleanup(){ rm -f "$W/session-private.pem" "$W/session-public.pem" "$W/aes.key" "$W/plain.json" "$W/release.p12" "$W/password.txt" "$W/wrapped.bin" "$W/iv.bin" "$W/cipher.bin"; }
+          trap cleanup EXIT
+
+          ARTIFACT_ID=9197108056
+          UNSIGNED_SHA='9eeaa6667af9e9a0489ca1313d4c5aef06ba8943584677537751be98090bd9b8'
+          EXPECTED_SIGNER='b3e45007cac42ff03bec33c39429a43af5d12a946c840b9062eb09b10c51ee33'
+          RECOVERY_ENDPOINT='https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/grab-oidc-recover-signing-v1'
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > "$W/unsigned-artifact.zip"
+          mkdir -p "$W/unsigned-artifact"; unzip -q "$W/unsigned-artifact.zip" -d "$W/unsigned-artifact"
+          APK="$(find "$W/unsigned-artifact" -type f -name 'Grab-by-Rhoda-v3.2-X-arm64-unsigned.apk' | head -n1)"
+          [[ -n "$APK" && -s "$APK" ]]
+          cp "$APK" "$W/unsigned.apk"
+          echo "$UNSIGNED_SHA  $W/unsigned.apk" | sha256sum -c -
+
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$W/session-private.pem" >/dev/null 2>&1
+          openssl pkey -in "$W/session-private.pem" -pubout -out "$W/session-public.pem"
+          PUB_B64="$(base64 -w0 "$W/session-public.pem")"
+
+          OIDC_JSON="$(curl --fail --show-error --silent -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=grab-signing-v32")"
+          OIDC="$(jq -r '.value // empty' <<< "$OIDC_JSON")"
+          [[ -n "$OIDC" ]]
+
+          RESP="$(curl --fail --show-error --silent --max-time 120 -X POST "$RECOVERY_ENDPOINT" -H "Authorization: Bearer $OIDC" -H 'content-type: application/json' --data "$(jq -cn --arg p "$PUB_B64" '{pub_b64:$p}')")"
+          jq -e '.ok == true and .sealed.v == 1' <<< "$RESP" >/dev/null
+          jq -r '.sealed.wrapped_key' <<< "$RESP" | base64 -d > "$W/wrapped.bin"
+          jq -r '.sealed.iv' <<< "$RESP" | base64 -d > "$W/iv.bin"
+          jq -r '.sealed.ciphertext' <<< "$RESP" | base64 -d > "$W/cipher.bin"
+          openssl pkeyutl -decrypt -inkey "$W/session-private.pem" -in "$W/wrapped.bin" -out "$W/aes.key" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256
+          node - "$W" <<'NODE'
+          const fs=require('fs'),crypto=require('crypto'),w=process.argv[2];
+          const k=fs.readFileSync(w+'/aes.key'),iv=fs.readFileSync(w+'/iv.bin'),all=fs.readFileSync(w+'/cipher.bin');
+          if(k.length!==32||iv.length!==12||all.length<17)throw new Error('bad envelope');
+          const d=crypto.createDecipheriv('aes-256-gcm',k,iv); d.setAuthTag(all.subarray(all.length-16));
+          fs.writeFileSync(w+'/plain.json',Buffer.concat([d.update(all.subarray(0,all.length-16)),d.final()]));
+          NODE
+          jq -e '.v == 1 and (.p12_b64|type=="string") and (.password|type=="string")' "$W/plain.json" >/dev/null
+          jq -r '.p12_b64' "$W/plain.json" | base64 -d > "$W/release.p12"
+          jq -r '.password' "$W/plain.json" > "$W/password.txt"
+          chmod 600 "$W/release.p12" "$W/password.txt"
+          rm -f "$W/plain.json" "$W/wrapped.bin" "$W/aes.key" "$W/iv.bin" "$W/cipher.bin" "$W/session-public.pem"
+
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n1)"
+          [[ -x "$SDKMANAGER" ]]
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'build-tools;36.0.0' >/dev/null
+          BT="$SDK/build-tools/36.0.0"
+          [[ -x "$BT/zipalign" && -x "$BT/apksigner" && -x "$BT/aapt" ]]
+
+          "$BT/zipalign" -P 16 -f 4 "$W/unsigned.apk" "$W/aligned.apk"
+          "$BT/apksigner" sign --ks "$W/release.p12" --ks-key-alias grab-release --ks-pass "file:$W/password.txt" --key-pass "file:$W/password.txt" --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false --out "$W/Grab-by-Rhoda-v3.2.apk" "$W/aligned.apk"
+          "$BT/zipalign" -c -P 16 -v 4 "$W/Grab-by-Rhoda-v3.2.apk" > "$W/zipalign-check.txt"
+          "$BT/apksigner" verify --verbose --print-certs "$W/Grab-by-Rhoda-v3.2.apk" > "$W/apksigner-verify.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$W/apksigner-verify.txt"
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' "$W/apksigner-verify.txt"
+          SIGNER="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print tolower($2);exit}' "$W/apksigner-verify.txt")"
+          [[ "$SIGNER" == "$EXPECTED_SIGNER" ]]
+
+          "$BT/aapt" dump badging "$W/Grab-by-Rhoda-v3.2.apk" > "$W/final-badging.txt"
+          grep -q "package: name='com.veektall.grab' versionCode='5' versionName='3.2'" "$W/final-badging.txt"
+          grep -q "sdkVersion:'29'" "$W/final-badging.txt"
+          grep -q "targetSdkVersion:'36'" "$W/final-badging.txt"
+          unzip -l "$W/Grab-by-Rhoda-v3.2.apk" > "$W/final-files.txt"
+          grep -q 'lib/arm64-v8a/' "$W/final-files.txt"
+          ! grep -q 'lib/x86_64/' "$W/final-files.txt"
+
+          FINAL_SHA="$(sha256sum "$W/Grab-by-Rhoda-v3.2.apk" | awk '{print $1}')"
+          cat > "$W/final-manifest.txt" <<EOF
+          package=com.veektall.grab
+          versionName=3.2
+          versionCode=5
+          minSdk=29
+          targetSdk=36
+          abi=arm64-v8a
+          unsigned_sha256=$UNSIGNED_SHA
+          final_sha256=$FINAL_SHA
+          signer_sha256=$SIGNER
+          signature_v2=true
+          signature_v3=true
+          EOF
+
+          J="$(curl --fail --show-error --silent --max-time 240 -X POST https://tempfile.org/api/upload/local -F "files=@$W/Grab-by-Rhoda-v3.2.apk;type=application/vnd.android.package-archive" -F 'expiryHours=24')"
+          ID="$(jq -r 'if .success and (.files|length)>0 then .files[0].id else empty end' <<< "$J")"
+          [[ -n "$ID" ]]
+          echo "FINAL_URL=https://tempfile.org/$ID/download"
+          echo "FINAL_SHA256=$FINAL_SHA"
+          echo "FINAL_SIGNER_SHA256=$SIGNER"
+          echo 'FINAL_SIGNING_VERIFIED_PASS'
+      - name: Upload final signed APK and verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grab-by-Rhoda-v3.2-final-signed
+          path: |
+            /tmp/grab-final/Grab-by-Rhoda-v3.2.apk
+            /tmp/grab-final/final-manifest.txt
+            /tmp/grab-final/apksigner-verify.txt
+            /tmp/grab-final/final-badging.txt
+            /tmp/grab-final/zipalign-check.txt
+          retention-days: 7
