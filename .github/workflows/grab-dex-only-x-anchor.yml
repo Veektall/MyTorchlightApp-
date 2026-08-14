@@ -1,0 +1,115 @@
+name: Grab X/Twitter dex-only anchor build
+
+on:
+  push:
+    branches: [grab-public-arm64-x]
+    paths:
+      - .github/workflows/grab-dex-only-x-anchor.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      APK_PROXY_URL: https://kwulmnvxhybbxlsdcwcn.supabase.co/functions/v1/grab-arm64-proxy-v1?k=-rq3VKRMIdH4rhliqfb0wWULRafqkt5N
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch last known-good Gradle-packaged ARM64 base
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --max-time 240 "$APK_PROXY_URL" -o /tmp/base.apk
+          test "$(stat -c%s /tmp/base.apk)" -eq 24388188
+          sha256sum /tmp/base.apk | tee /tmp/base-sha.txt
+          unzip -lv /tmp/base.apk | egrep 'classes.dex|lib/arm64-v8a/(libpython.so|libpython.zip.so|libqjs.so)|AndroidManifest.xml' | tee /tmp/base-layout.txt
+
+      - name: Disassemble only classes.dex and add X/Twitter routing
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://github.com/JesusFreke/smali/releases/download/v2.5.2/baksmali-2.5.2.jar -o /tmp/baksmali.jar
+          curl -fL --retry 3 https://github.com/JesusFreke/smali/releases/download/v2.5.2/smali-2.5.2.jar -o /tmp/smali.jar
+          unzip -p /tmp/base.apk classes.dex > /tmp/classes.dex
+          java -jar /tmp/baksmali.jar d /tmp/classes.dex -o /tmp/smali
+          MAIN=/tmp/smali/com/veektall/grab/MainActivity.smali
+          SVC=/tmp/smali/com/veektall/grab/YouTubeDownloadService.smali
+          test -s "$MAIN"; test -s "$SVC"
+          python grab-e2e/patch_x_support_v2.py "$MAIN" "$SVC" | tee /tmp/patch.txt
+          grep -q X_TWITTER_SMALI_PATCH_PASS /tmp/patch.txt
+          java -jar /tmp/smali.jar a /tmp/smali -o /tmp/classes-patched.dex
+          test -s /tmp/classes-patched.dex
+
+      - name: Replace only classes.dex; keep manifest/resources/native packaging intact
+        run: |
+          set -euo pipefail
+          cp /tmp/base.apk /tmp/x-anchor-unsigned.apk
+          zip -q -d /tmp/x-anchor-unsigned.apk classes.dex
+          mkdir -p /tmp/repack
+          cp /tmp/classes-patched.dex /tmp/repack/classes.dex
+          (cd /tmp/repack && zip -q -X /tmp/x-anchor-unsigned.apk classes.dex)
+          python - <<'PY'
+          import hashlib, zipfile
+          base=zipfile.ZipFile('/tmp/base.apk')
+          out=zipfile.ZipFile('/tmp/x-anchor-unsigned.apk')
+          bn={i.filename:i for i in base.infolist()}
+          on={i.filename:i for i in out.infolist()}
+          assert set(bn)==set(on), (set(bn)-set(on), set(on)-set(bn))
+          changed=[]
+          for name in bn:
+              if name=='classes.dex':
+                  continue
+              a=base.read(name); b=out.read(name)
+              if hashlib.sha256(a).digest()!=hashlib.sha256(b).digest():
+                  changed.append(name)
+              assert bn[name].compress_type==on[name].compress_type, (name,bn[name].compress_type,on[name].compress_type)
+          assert not changed, changed
+          print('ONLY_CLASSES_DEX_CONTENT_CHANGED_PASS')
+          for name in ['lib/arm64-v8a/libpython.so','lib/arm64-v8a/libpython.zip.so','lib/arm64-v8a/libqjs.so']:
+              print(name, 'compression=', on[name].compress_type)
+          PY
+          unzip -lv /tmp/x-anchor-unsigned.apk | egrep 'classes.dex|lib/arm64-v8a/(libpython.so|libpython.zip.so|libqjs.so)|AndroidManifest.xml' | tee /tmp/anchor-layout.txt
+
+      - name: Verify identity, preserve native-lib storage mode, align and test-sign
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT="$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BT/aapt" dump badging /tmp/x-anchor-unsigned.apk > /tmp/badging.txt
+          grep -q "package: name='com.veektall.grab' versionCode='5' versionName='3.2'" /tmp/badging.txt
+          grep -q "sdkVersion:'29'" /tmp/badging.txt
+          grep -q "targetSdkVersion:'36'" /tmp/badging.txt
+          grep -q "native-code: 'arm64-v8a'" /tmp/badging.txt
+          python - <<'PY'
+          import zipfile
+          for apk in ['/tmp/base.apk','/tmp/x-anchor-unsigned.apk']:
+              z=zipfile.ZipFile(apk)
+              print(apk)
+              for n in ['lib/arm64-v8a/libpython.so','lib/arm64-v8a/libpython.zip.so','lib/arm64-v8a/libqjs.so']:
+                  i=z.getinfo(n); print(n, i.compress_type, i.file_size, i.compress_size)
+                  assert i.compress_type == zipfile.ZIP_STORED, (apk,n,'native library unexpectedly compressed')
+          print('NATIVE_LIB_STORAGE_MATCHES_WORKING_BASE_PASS')
+          PY
+          "$BT/zipalign" -P 16 -f 4 /tmp/x-anchor-unsigned.apk /tmp/aligned.apk
+          "$BT/zipalign" -c -P 16 -v 4 /tmp/aligned.apk > /tmp/zipalign.txt
+          keytool -genkeypair -keystore /tmp/test.jks -storepass android -keypass android -alias test -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Grab anchor preflight' >/dev/null 2>&1
+          "$BT/apksigner" sign --ks /tmp/test.jks --ks-pass pass:android --key-pass pass:android --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true --v4-signing-enabled false --out /tmp/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk /tmp/aligned.apk
+          "$BT/apksigner" verify --verbose /tmp/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk | tee /tmp/apksigner.txt
+          sha256sum /tmp/x-anchor-unsigned.apk /tmp/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk | tee /tmp/sha256.txt
+
+      - name: Publish anchor artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp /tmp/x-anchor-unsigned.apk evidence/Grab-by-Rhoda-v3.2-X-anchor-unsigned.apk
+          cp /tmp/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk evidence/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk
+          cp /tmp/base-sha.txt /tmp/base-layout.txt /tmp/anchor-layout.txt /tmp/patch.txt /tmp/badging.txt /tmp/zipalign.txt /tmp/apksigner.txt /tmp/sha256.txt evidence/
+          upload(){ local f="$1" out="$2"; j="$(curl --fail --show-error --silent --max-time 240 -X POST https://tempfile.org/api/upload/local -F "files=@$f;type=application/vnd.android.package-archive" -F 'expiryHours=24')"; id="$(jq -r 'if .success and (.files|length)>0 then .files[0].id else empty end' <<< "$j")"; test -n "$id"; echo "https://tempfile.org/$id/download" > "$out"; }
+          upload evidence/Grab-by-Rhoda-v3.2-X-anchor-unsigned.apk evidence/unsigned-url.txt
+          upload evidence/Grab-by-Rhoda-v3.2-X-anchor-preflight.apk evidence/preflight-url.txt
+          echo GRAB_X_DEX_ONLY_ANCHOR_BUILD_PASS | tee evidence/result.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grab-v32-x-dex-only-anchor
+          path: evidence/
+          retention-days: 3
