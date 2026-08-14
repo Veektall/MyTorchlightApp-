@@ -1,0 +1,32 @@
+name: Grab publish verified unsigned
+on:
+  push:
+    paths: ['.github/workflows/grab-publish-unsigned.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Publish verified ARM64 candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          W=/tmp/grab-publish; mkdir -p "$W"
+          ARTIFACT_ID=9197108056
+          EXPECTED=9eeaa6667af9e9a0489ca1313d4c5aef06ba8943584677537751be98090bd9b8
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > "$W/a.zip"
+          unzip -q "$W/a.zip" -d "$W/a"
+          APK="$(find "$W/a" -type f -name 'Grab-by-Rhoda-v3.2-X-arm64-unsigned.apk' | head -n1)"
+          [[ -n "$APK" && -s "$APK" ]]
+          echo "$EXPECTED  $APK" | sha256sum -c -
+          j="$(curl --fail --show-error --silent --max-time 240 -X POST https://tempfile.org/api/upload/local -F "files=@$APK;type=application/vnd.android.package-archive" -F 'expiryHours=24')"
+          id="$(jq -r 'if .success and (.files|length)>0 then .files[0].id else empty end' <<< "$j")"
+          [[ -n "$id" ]]
+          url="https://tempfile.org/$id/download"
+          echo "UNSIGNED_URL=$url"
+          echo "UNSIGNED_SHA256=$EXPECTED"
