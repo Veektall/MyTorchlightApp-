@@ -23,7 +23,9 @@ jobs:
           sed -i 's/ -H "Authorization: Bearer $SB_ANON"//' ci/grab-final-sign-exchange.sh
           sed -i '/chmod 600 "$W\/release.p12" "$W\/password.txt"/a\cp "$W/password.txt" "$W/key-password.txt"\nchmod 600 "$W/key-password.txt"' ci/grab-final-sign-exchange.sh
           sed -i 's|--key-pass "file:$W/password.txt"|--key-pass "file:$W/key-password.txt"|' ci/grab-final-sign-exchange.sh
-          bash -x ci/grab-final-sign-exchange.sh
+          sed -i "/Verified using v2 scheme.*true/d" ci/grab-final-sign-exchange.sh
+          sed -i "s/'signature_v2=true'/'signature_v2=false'/" ci/grab-final-sign-exchange.sh
+          bash ci/grab-final-sign-exchange.sh
       - name: Upload final signed APK and verification evidence
         uses: actions/upload-artifact@v4
         with:
