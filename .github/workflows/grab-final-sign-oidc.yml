@@ -17,9 +17,10 @@ jobs:
       - name: Run final signer
         env:
           GH_TOKEN: ${{ github.token }}
-          SB_ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3dWxtbnZ4aHliYnhsc2Rjd2NuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxNzE4MzAsImV4cCI6MjEwMTc0NzgzMH0.2Sr7m5kgejO0zSGyBrd78mUUV7d_bWAsS8e4clcIPF4
+          SB_ANON: sb_publishable_uxjnA6ada7o-Ft0_GwwBJg_izt6bafz
         run: |
           sed -i 's/rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256/rsa_oaep_md:sha1 -pkeyopt rsa_mgf1_md:sha1/' ci/grab-final-sign-exchange.sh
+          sed -i 's/ -H "Authorization: Bearer $SB_ANON"//' ci/grab-final-sign-exchange.sh
           bash ci/grab-final-sign-exchange.sh
       - name: Upload final signed APK and verification evidence
         uses: actions/upload-artifact@v4
