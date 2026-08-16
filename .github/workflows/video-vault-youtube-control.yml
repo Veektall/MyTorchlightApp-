@@ -1,0 +1,51 @@
+name: VideoVault YouTube control
+
+on:
+  push:
+    branches:
+      - video-vault-control-test
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-youtube-rendition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yt-dlp
+        run: |
+          python -m pip install --upgrade "yt-dlp[default]"
+          yt-dlp --version
+
+      - name: Fetch YouTube processed rendition
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL='https://www.youtube.com/watch?v=DP2uA6tfepg'
+          mkdir -p control-output
+          yt-dlp --no-playlist \
+            -f 'bv*[width=720][vcodec^=avc1]/bv*[width=720]/bestvideo' \
+            -o 'control-output/youtube_processed.%(ext)s' \
+            "$URL" \
+          || yt-dlp --no-playlist \
+            --extractor-args 'youtube:player_client=android_vr' \
+            -f 'bv*[width=720]/bestvideo' \
+            -o 'control-output/youtube_processed.%(ext)s' \
+            "$URL"
+          FILE=$(find control-output -maxdepth 1 -type f -name 'youtube_processed.*' | head -n 1)
+          test -n "$FILE"
+          ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate,bit_rate -show_entries format=duration,size -of json "$FILE" > control-output/ffprobe.json || true
+          sha256sum "$FILE" > control-output/video_sha256.txt
+          ls -lh control-output
+
+      - name: Upload processed rendition
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-processed-control
+          path: control-output/
+          if-no-files-found: error
+          retention-days: 1
