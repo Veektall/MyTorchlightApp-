@@ -16,30 +16,120 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install yt-dlp
-        run: |
-          python -m pip install --upgrade "yt-dlp[default]"
-          yt-dlp --version
-
-      - name: Fetch YouTube processed rendition
+      - name: Fetch YouTube processed rendition through public proxy frontends
         shell: bash
         run: |
           set -euxo pipefail
-          URL='https://www.youtube.com/watch?v=DP2uA6tfepg'
           mkdir -p control-output
-          yt-dlp --no-playlist \
-            -f 'bv*[width=720][vcodec^=avc1]/bv*[width=720]/bestvideo' \
-            -o 'control-output/youtube_processed.%(ext)s' \
-            "$URL" \
-          || yt-dlp --no-playlist \
-            --extractor-args 'youtube:player_client=android_vr' \
-            -f 'bv*[width=720]/bestvideo' \
-            -o 'control-output/youtube_processed.%(ext)s' \
-            "$URL"
-          FILE=$(find control-output -maxdepth 1 -type f -name 'youtube_processed.*' | head -n 1)
-          test -n "$FILE"
-          ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate,bit_rate -show_entries format=duration,size -of json "$FILE" > control-output/ffprobe.json || true
-          sha256sum "$FILE" > control-output/video_sha256.txt
+          python - <<'PY'
+          import json, os, re, sys, requests
+
+          VIDEO_ID = 'DP2uA6tfepg'
+          OUT = 'control-output/youtube_processed.mp4'
+          session = requests.Session()
+          session.headers.update({'User-Agent': 'Mozilla/5.0 VideoVault-Control/1.0'})
+
+          piped = [
+              'https://pipedapi.kavin.rocks',
+              'https://pipedapi.tokhmi.xyz',
+              'https://pipedapi.moomoo.me',
+              'https://pipedapi.syncpundit.io',
+              'https://api-piped.mha.fi',
+              'https://piped-api.garudalinux.org',
+          ]
+          invidious = [
+              'https://inv.nadeko.net',
+              'https://invidious.nerdvpn.de',
+              'https://yt.chocolatemoo53.com',
+              'https://invidious.tiekoetter.com',
+          ]
+
+          def qnum(s):
+              vals = re.findall(r'\d+', str(s or ''))
+              return int(vals[0]) if vals else 0
+
+          def download(url, label):
+              print('TRY STREAM', label, url[:180])
+              try:
+                  with session.get(url, stream=True, timeout=(15, 120), allow_redirects=True) as r:
+                      print('HTTP', r.status_code, 'type', r.headers.get('content-type'), 'len', r.headers.get('content-length'))
+                      r.raise_for_status()
+                      ctype = (r.headers.get('content-type') or '').lower()
+                      total = 0
+                      with open(OUT, 'wb') as f:
+                          for chunk in r.iter_content(1024 * 1024):
+                              if chunk:
+                                  f.write(chunk)
+                                  total += len(chunk)
+                      if total < 50_000:
+                          print('Too small:', total)
+                          os.remove(OUT)
+                          return False
+                      print('DOWNLOADED', total, 'bytes from', label)
+                      return True
+              except Exception as e:
+                  print('DOWNLOAD FAILED', label, repr(e))
+                  if os.path.exists(OUT):
+                      os.remove(OUT)
+                  return False
+
+          # Piped: /streams/:videoId exposes transcoded playback stream URLs.
+          for base in piped:
+              try:
+                  api = f'{base}/streams/{VIDEO_ID}'
+                  print('TRY PIPED', api)
+                  r = session.get(api, timeout=20)
+                  print('PIPED HTTP', r.status_code, 'bytes', len(r.content))
+                  if not r.ok:
+                      continue
+                  data = r.json()
+                  streams = data.get('videoStreams') or []
+                  # Prefer the same 720p playback class as our source; then nearest resolution.
+                  streams.sort(key=lambda s: (0 if qnum(s.get('quality')) == 720 else 1, abs(qnum(s.get('quality')) - 720), 0 if 'mp4' in str(s.get('format','')).lower() else 1))
+                  for s in streams[:12]:
+                      u = s.get('url')
+                      if not u:
+                          continue
+                      label = f"Piped {base} quality={s.get('quality')} format={s.get('format')} codec={s.get('codec')}"
+                      if download(u, label):
+                          with open('control-output/source.json','w') as f:
+                              json.dump({'frontend':'piped','api':base,'stream':{k:s.get(k) for k in ('quality','format','codec','videoOnly','bitrate')}}, f, indent=2)
+                          sys.exit(0)
+              except Exception as e:
+                  print('PIPED FAILED', base, repr(e))
+
+          # Invidious fallback. local=true asks the instance to proxy media where supported.
+          for base in invidious:
+              try:
+                  api = f'{base}/api/v1/videos/{VIDEO_ID}?local=true'
+                  print('TRY INVIDIOUS', api)
+                  r = session.get(api, timeout=20)
+                  print('INVIDIOUS HTTP', r.status_code, 'bytes', len(r.content))
+                  if not r.ok:
+                      continue
+                  data = r.json()
+                  streams = (data.get('formatStreams') or []) + (data.get('adaptiveFormats') or [])
+                  streams.sort(key=lambda s: (0 if int(s.get('height') or 0) == 720 else 1, abs(int(s.get('height') or 0)-720), 0 if 'mp4' in str(s.get('type','')).lower() else 1))
+                  for s in streams[:16]:
+                      u = s.get('url')
+                      if not u:
+                          continue
+                      if u.startswith('/'):
+                          u = base + u
+                      label = f"Invidious {base} height={s.get('height')} quality={s.get('qualityLabel')} type={s.get('type')}"
+                      if download(u, label):
+                          with open('control-output/source.json','w') as f:
+                              json.dump({'frontend':'invidious','api':base,'stream':{k:s.get(k) for k in ('height','width','qualityLabel','type','bitrate')}}, f, indent=2)
+                          sys.exit(0)
+              except Exception as e:
+                  print('INVIDIOUS FAILED', base, repr(e))
+
+          print('All proxy retrieval routes failed')
+          sys.exit(1)
+          PY
+
+          ffprobe -v error -show_entries stream=codec_name,width,height,r_frame_rate,bit_rate -show_entries format=duration,size,format_name -of json control-output/youtube_processed.mp4 > control-output/ffprobe.json
+          sha256sum control-output/youtube_processed.mp4 > control-output/video_sha256.txt
           ls -lh control-output
 
       - name: Upload processed rendition
