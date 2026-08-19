@@ -89,6 +89,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+      - name: Enable emulator acceleration
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+          fi
       - name: Emulator install / launch / interaction / relaunch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -96,7 +102,7 @@ jobs:
           arch: x86_64
           target: default
           profile: pixel_2
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           script: bash ci/e2e-fixed.sh
       - uses: actions/upload-artifact@v4
