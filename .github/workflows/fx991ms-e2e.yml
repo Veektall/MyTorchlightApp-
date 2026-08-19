@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   build:
@@ -109,7 +110,7 @@ jobs:
           mkdir -p final
           cp downloaded/candidate/fx-991MS.apk final/fx-991MS.apk 2>/dev/null || cp downloaded/fx-991MS.apk final/fx-991MS.apk
           cp downloaded/candidate/SHA256SUMS.txt final/SHA256SUMS.txt 2>/dev/null || cp downloaded/SHA256SUMS.txt final/SHA256SUMS.txt
-          sha256sum -c final/SHA256SUMS.txt || (cd final && sha256sum -c SHA256SUMS.txt)
+          (cd final && sha256sum -c SHA256SUMS.txt)
           test -s final/fx-991MS.apk
           echo "BUILD PASS"
           echo "INSTALL PASS on API 23/29/35"
@@ -122,3 +123,17 @@ jobs:
           name: fx-991MS-FINAL
           path: final/
           retention-days: 7
+
+  report:
+    if: always()
+    needs: [build, e2e, final]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report release gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          FINAL_RESULT: ${{ needs.final.result }}
+        run: |
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS Android gate run ${GITHUB_RUN_ID}: build=${BUILD_RESULT}; e2e=${E2E_RESULT}; final=${FINAL_RESULT}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
