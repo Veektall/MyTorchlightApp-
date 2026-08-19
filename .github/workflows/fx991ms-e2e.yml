@@ -1,8 +1,8 @@
-name: fx-991MS Android E2E
+name: fx-991MS Android E2E + Source
 
 on:
   push:
-    branches: [fx991ms-android3]
+    branches: [fx991ms-icon-v4]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS Android gate START run ${GITHUB_RUN_ID}. Head ${GITHUB_SHA}. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS icon/source Android gate START run ${GITHUB_RUN_ID}. Head ${GITHUB_SHA}. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
   build:
     runs-on: ubuntu-latest
@@ -27,8 +27,13 @@ jobs:
       - name: Rehydrate calculator source
         run: |
           { head -c 7000 fxparts/part00; cat fxparts/part01 fxparts/part02 fxparts/part03 fxparts/part04 fxparts/part05 fxparts/part06; } | base64 -d | tar -xzf -
-          chmod +x gradlew ci/e2e-fixed.sh
+          chmod +x gradlew ci/e2e-fixed.sh fxicon/apply-icon.sh
           test -s app/src/main/java/com/veektall/fx991ms/Engine.java
+      - name: Apply launcher icon and version bump
+        run: |
+          bash fxicon/apply-icon.sh
+          test -s app/src/main/res/drawable-nodpi/fx991ms_app_icon.png
+          grep -q 'android:icon="@drawable/fx991ms_app_icon"' app/src/main/AndroidManifest.xml
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -53,9 +58,51 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 candidate/fx-991MS.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/fx-991MS.apk | tee candidate/apksigner.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS.apk | tee candidate/badging.txt
+          unzip -l candidate/fx-991MS.apk | tee candidate/apk-files.txt
+          grep -q 'fx991ms_app_icon.png' candidate/apk-files.txt
+      - name: Package exact source used for build
+        run: |
+          cat > SOURCE_README.md <<'EOF'
+          # fx-991MS Android source — icon release
+
+          This archive contains the exact source tree used to build the accompanying tested APK.
+
+          Build requirements:
+          - JDK 17
+          - Gradle wrapper included
+          - Android SDK platform 35 / build-tools 35.0.0
+
+          Build command:
+              ./gradlew clean :app:assembleRelease
+
+          Runtime gate used for the release:
+          - Android API 23
+          - Android API 29
+          - Android API 35
+          - install, cold launch, interaction, repeated relaunch and logcat fatal scan
+
+          Launcher icon resource:
+              app/src/main/res/drawable-nodpi/fx991ms_app_icon.png
+
+          Package:
+              com.veektall.fx991ms
+
+          Version:
+              1.1.0 (versionCode 4)
+          EOF
+          rm -rf source-package
+          mkdir -p source-package/fx-991MS-source
+          for p in app gradle gradlew gradlew.bat settings.gradle settings.gradle.kts build.gradle build.gradle.kts gradle.properties ci tools fxicon SOURCE_README.md; do
+            if [ -e "$p" ]; then cp -a "$p" source-package/fx-991MS-source/; fi
+          done
+          rm -rf source-package/fx-991MS-source/app/build
+          find source-package/fx-991MS-source -name '.gradle' -type d -prune -exec rm -rf {} + || true
+          (cd source-package && zip -qr ../candidate/fx-991MS-source.zip fx-991MS-source)
+          test -s candidate/fx-991MS-source.zip
+          sha256sum candidate/fx-991MS-source.zip | tee candidate/SOURCE_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: fx991ms-candidate
+          name: fx991ms-candidate-icon-source
           path: |
             candidate/
             engine-test.txt
@@ -77,7 +124,7 @@ jobs:
           chmod +x ci/e2e-fixed.sh
       - uses: actions/download-artifact@v4
         with:
-          name: fx991ms-candidate
+          name: fx991ms-candidate-icon-source
           path: downloaded
       - name: Locate exact candidate
         run: |
@@ -108,7 +155,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fx991ms-e2e-api-${{ matrix.api-level }}
+          name: fx991ms-icon-e2e-api-${{ matrix.api-level }}
           path: e2e-out/
           retention-days: 7
 
@@ -118,16 +165,23 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: fx991ms-candidate
+          name: fx991ms-candidate-icon-source
           path: downloaded
-      - name: Final binary identity gate
+      - name: Final binary and source identity gate
         run: |
           mkdir -p final
-          cp downloaded/candidate/fx-991MS.apk final/fx-991MS.apk 2>/dev/null || cp downloaded/fx-991MS.apk final/fx-991MS.apk
-          cp downloaded/candidate/SHA256SUMS.txt final/SHA256SUMS.txt 2>/dev/null || cp downloaded/SHA256SUMS.txt final/SHA256SUMS.txt
+          cp downloaded/candidate/fx-991MS.apk final/fx-991MS-v1.1.0.apk 2>/dev/null || cp downloaded/fx-991MS.apk final/fx-991MS-v1.1.0.apk
+          cp downloaded/candidate/fx-991MS-source.zip final/fx-991MS-v1.1.0-source.zip 2>/dev/null || cp downloaded/fx-991MS-source.zip final/fx-991MS-v1.1.0-source.zip
+          APK_SHA=$(awk '{print $1}' downloaded/candidate/SHA256SUMS.txt 2>/dev/null || awk '{print $1}' downloaded/SHA256SUMS.txt)
+          SRC_SHA=$(awk '{print $1}' downloaded/candidate/SOURCE_SHA256.txt 2>/dev/null || awk '{print $1}' downloaded/SOURCE_SHA256.txt)
+          echo "$APK_SHA  fx-991MS-v1.1.0.apk" > final/SHA256SUMS.txt
+          echo "$SRC_SHA  fx-991MS-v1.1.0-source.zip" >> final/SHA256SUMS.txt
           (cd final && sha256sum -c SHA256SUMS.txt)
-          test -s final/fx-991MS.apk
+          test -s final/fx-991MS-v1.1.0.apk
+          test -s final/fx-991MS-v1.1.0-source.zip
           echo "BUILD PASS"
+          echo "ICON RESOURCE PASS"
+          echo "SOURCE PACKAGE PASS"
           echo "INSTALL PASS on API 23/29/35"
           echo "COLD LAUNCH PASS"
           echo "INTERACTION PASS"
@@ -135,7 +189,7 @@ jobs:
           echo "LOGCAT FATAL SCAN PASS"
       - uses: actions/upload-artifact@v4
         with:
-          name: fx-991MS-FINAL
+          name: fx-991MS-v1.1.0-FINAL
           path: final/
           retention-days: 7
 
@@ -151,4 +205,4 @@ jobs:
           E2E_RESULT: ${{ needs.e2e.result }}
           FINAL_RESULT: ${{ needs.final.result }}
         run: |
-          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS Android gate run ${GITHUB_RUN_ID}: build=${BUILD_RESULT}; e2e=${E2E_RESULT}; final=${FINAL_RESULT}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS icon/source gate run ${GITHUB_RUN_ID}: build=${BUILD_RESULT}; e2e=${E2E_RESULT}; final=${FINAL_RESULT}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
