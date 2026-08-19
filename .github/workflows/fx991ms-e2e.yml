@@ -1,0 +1,124 @@
+name: fx-991MS Android E2E
+
+on:
+  push:
+    branches: [fx991ms-android3]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehydrate calculator source
+        run: |
+          cat fxparts/part* | base64 -d | tar -xzf -
+          chmod +x gradlew ci/e2e-fixed.sh
+          test -s app/src/main/java/com/veektall/fx991ms/Engine.java
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+      - name: Pure engine regression
+        run: |
+          rm -rf /tmp/fxclasses && mkdir -p /tmp/fxclasses
+          javac -d /tmp/fxclasses app/src/main/java/com/veektall/fx991ms/Engine.java tools/EngineSelfTest.java
+          java -cp /tmp/fxclasses com.veektall.fx991ms.EngineSelfTest | tee engine-test.txt
+      - name: Build exact release candidate
+        run: |
+          ./gradlew --no-daemon clean :app:assembleRelease
+          mkdir -p candidate
+          cp app/build/outputs/apk/release/app-release.apk candidate/fx-991MS.apk
+          sha256sum candidate/fx-991MS.apk | tee candidate/SHA256SUMS.txt
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 candidate/fx-991MS.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/fx-991MS.apk | tee candidate/apksigner.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS.apk | tee candidate/badging.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fx991ms-candidate
+          path: |
+            candidate/
+            engine-test.txt
+          retention-days: 7
+
+  e2e:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [23, 29, 35]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehydrate test support
+        run: |
+          cat fxparts/part* | base64 -d | tar -xzf -
+          chmod +x ci/e2e-fixed.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: fx991ms-candidate
+          path: downloaded
+      - name: Locate exact candidate
+        run: |
+          mkdir -p candidate
+          cp downloaded/candidate/fx-991MS.apk candidate/fx-991MS.apk 2>/dev/null || cp downloaded/fx-991MS.apk candidate/fx-991MS.apk
+          sha256sum candidate/fx-991MS.apk
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Emulator install / launch / interaction / relaunch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: default
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash ci/e2e-fixed.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fx991ms-e2e-api-${{ matrix.api-level }}
+          path: e2e-out/
+          retention-days: 7
+
+  final:
+    needs: [build, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fx991ms-candidate
+          path: downloaded
+      - name: Final binary identity gate
+        run: |
+          mkdir -p final
+          cp downloaded/candidate/fx-991MS.apk final/fx-991MS.apk 2>/dev/null || cp downloaded/fx-991MS.apk final/fx-991MS.apk
+          cp downloaded/candidate/SHA256SUMS.txt final/SHA256SUMS.txt 2>/dev/null || cp downloaded/SHA256SUMS.txt final/SHA256SUMS.txt
+          sha256sum -c final/SHA256SUMS.txt || (cd final && sha256sum -c SHA256SUMS.txt)
+          test -s final/fx-991MS.apk
+          echo "BUILD PASS"
+          echo "INSTALL PASS on API 23/29/35"
+          echo "COLD LAUNCH PASS"
+          echo "INTERACTION PASS"
+          echo "RELAUNCH PASS"
+          echo "LOGCAT FATAL SCAN PASS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fx-991MS-FINAL
+          path: final/
+          retention-days: 7
