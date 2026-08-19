@@ -10,6 +10,15 @@ permissions:
   issues: write
 
 jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "fx-991MS Android gate START run ${GITHUB_RUN_ID}. Head ${GITHUB_SHA}. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -40,7 +49,7 @@ jobs:
           ./gradlew --no-daemon clean :app:assembleRelease
           mkdir -p candidate
           cp app/build/outputs/apk/release/app-release.apk candidate/fx-991MS.apk
-          sha256sum candidate/fx-991MS.apk | tee candidate/SHA256SUMS.txt
+          (cd candidate && sha256sum fx-991MS.apk | tee SHA256SUMS.txt)
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 candidate/fx-991MS.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/fx-991MS.apk | tee candidate/apksigner.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS.apk | tee candidate/badging.txt
