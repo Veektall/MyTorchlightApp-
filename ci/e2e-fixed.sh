@@ -25,10 +25,17 @@ launch() {
   adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep "$PKG" >/dev/null
 }
 
+ui_dump() {
+  local name="$1"
+  local remote="/data/local/tmp/${name}.xml"
+  adb shell rm -f "$remote" >/dev/null 2>&1 || true
+  adb shell uiautomator dump "$remote" >/dev/null
+  adb exec-out cat "$remote"
+}
+
 dismiss_immersive_cling() {
-  adb shell uiautomator dump /sdcard/fxcling.xml >/dev/null 2>&1 || true
   local xml
-  xml="$(adb shell cat /sdcard/fxcling.xml 2>/dev/null || true)"
+  xml="$(ui_dump fxcling 2>/dev/null || true)"
   if echo "$xml" | grep -F 'Viewing full screen' >/dev/null 2>&1; then
     echo 'Dismissing Android immersive-mode tutorial'
     adb shell input tap 336 202
@@ -36,10 +43,7 @@ dismiss_immersive_cling() {
   fi
 }
 
-dump_lcd(){
-  adb shell uiautomator dump /sdcard/fx991.xml >/dev/null
-  adb shell cat /sdcard/fx991.xml | tr '\n' ' '
-}
+dump_lcd(){ ui_dump fx991 | tr '\n' ' '; }
 assert_lcd(){ local needle="$1"; local xml; xml="$(dump_lcd)"; echo "$xml" > "$OUT/window.xml"; echo "$xml" | grep -F "$needle" >/dev/null || { echo "Expected LCD fragment: $needle" >&2; echo "$xml" >&2; exit 21; }; }
 
 launch
@@ -74,8 +78,8 @@ assert_lcd 'x1=2'
 
 adb shell input swipe 295 291 295 291 900
 sleep 1
-adb shell uiautomator dump /sdcard/manual.xml >/dev/null
-adb shell cat /sdcard/manual.xml | grep -F 'fx-991MS emulator' >/dev/null
+manual_xml="$(ui_dump manual)"
+echo "$manual_xml" | grep -F 'fx-991MS emulator' >/dev/null
 adb exec-out screencap -p > "$OUT/manual.png"
 adb shell input keyevent BACK
 
