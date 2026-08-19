@@ -13,6 +13,7 @@ adb install -r "$APK"
 adb shell pm clear "$PKG" >/dev/null || true
 adb shell wm size 420x840
 adb shell wm density 160
+adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
 sleep 1
 adb logcat -c
 
@@ -24,6 +25,17 @@ launch() {
   adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep "$PKG" >/dev/null
 }
 
+dismiss_immersive_cling() {
+  adb shell uiautomator dump /sdcard/fxcling.xml >/dev/null 2>&1 || true
+  local xml
+  xml="$(adb shell cat /sdcard/fxcling.xml 2>/dev/null || true)"
+  if echo "$xml" | grep -F 'Viewing full screen' >/dev/null 2>&1; then
+    echo 'Dismissing Android immersive-mode tutorial'
+    adb shell input tap 336 202
+    sleep 1
+  fi
+}
+
 dump_lcd(){
   adb shell uiautomator dump /sdcard/fx991.xml >/dev/null
   adb shell cat /sdcard/fx991.xml | tr '\n' ' '
@@ -31,6 +43,7 @@ dump_lcd(){
 assert_lcd(){ local needle="$1"; local xml; xml="$(dump_lcd)"; echo "$xml" > "$OUT/window.xml"; echo "$xml" | grep -F "$needle" >/dev/null || { echo "Expected LCD fragment: $needle" >&2; echo "$xml" >&2; exit 21; }; }
 
 launch
+dismiss_immersive_cling
 adb exec-out screencap -p > "$OUT/launch.png"
 assert_lcd 'fx991ms LCD DEG'
 
