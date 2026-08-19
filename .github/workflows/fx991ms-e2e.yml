@@ -32,8 +32,9 @@ jobs:
       - name: Apply launcher icon and version bump
         run: |
           bash fxicon/apply-icon.sh
-          test -s app/src/main/res/drawable-nodpi/fx991ms_app_icon.png
+          test -s app/src/main/res/drawable/fx991ms_app_icon.xml
           grep -q 'android:icon="@drawable/fx991ms_app_icon"' app/src/main/AndroidManifest.xml
+          grep -q 'android:roundIcon="@drawable/fx991ms_app_icon"' app/src/main/AndroidManifest.xml
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -58,8 +59,10 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 candidate/fx-991MS.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/fx-991MS.apk | tee candidate/apksigner.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS.apk | tee candidate/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree candidate/fx-991MS.apk AndroidManifest.xml | tee candidate/manifest-tree.txt
           unzip -l candidate/fx-991MS.apk | tee candidate/apk-files.txt
-          grep -q 'fx991ms_app_icon.png' candidate/apk-files.txt
+          grep -q 'res/drawable/fx991ms_app_icon.xml' candidate/apk-files.txt
+          grep -q 'application: label=' candidate/badging.txt
       - name: Package exact source used for build
         run: |
           cat > SOURCE_README.md <<'EOF'
@@ -82,7 +85,7 @@ jobs:
           - install, cold launch, interaction, repeated relaunch and logcat fatal scan
 
           Launcher icon resource:
-              app/src/main/res/drawable-nodpi/fx991ms_app_icon.png
+              app/src/main/res/drawable/fx991ms_app_icon.xml
 
           Package:
               com.veektall.fx991ms
@@ -99,6 +102,8 @@ jobs:
           find source-package/fx-991MS-source -name '.gradle' -type d -prune -exec rm -rf {} + || true
           (cd source-package && zip -qr ../candidate/fx-991MS-source.zip fx-991MS-source)
           test -s candidate/fx-991MS-source.zip
+          unzip -l candidate/fx-991MS-source.zip | tee candidate/source-files.txt
+          grep -q 'app/src/main/res/drawable/fx991ms_app_icon.xml' candidate/source-files.txt
           sha256sum candidate/fx-991MS-source.zip | tee candidate/SOURCE_SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
