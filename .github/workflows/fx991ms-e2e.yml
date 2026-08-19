@@ -61,8 +61,9 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS.apk | tee candidate/badging.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree candidate/fx-991MS.apk AndroidManifest.xml | tee candidate/manifest-tree.txt
           unzip -l candidate/fx-991MS.apk | tee candidate/apk-files.txt
-          grep -q 'res/drawable/fx991ms_app_icon.xml' candidate/apk-files.txt
-          grep -q 'application: label=' candidate/badging.txt
+          grep -q "application: label='fx-991MS' icon='res/" candidate/badging.txt
+          grep -q 'android:icon' candidate/manifest-tree.txt
+          grep -q 'android:roundIcon' candidate/manifest-tree.txt
       - name: Package exact source used for build
         run: |
           cat > SOURCE_README.md <<'EOF'
