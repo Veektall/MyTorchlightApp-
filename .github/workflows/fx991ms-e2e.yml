@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rehydrate calculator source
         run: |
-          cat fxparts/part* | base64 -d | tar -xzf -
+          { head -c 7000 fxparts/part00; cat fxparts/part01 fxparts/part02 fxparts/part03 fxparts/part04 fxparts/part05 fxparts/part06; } | base64 -d | tar -xzf -
           chmod +x gradlew ci/e2e-fixed.sh
           test -s app/src/main/java/com/veektall/fx991ms/Engine.java
       - uses: actions/setup-java@v4
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rehydrate test support
         run: |
-          cat fxparts/part* | base64 -d | tar -xzf -
+          { head -c 7000 fxparts/part00; cat fxparts/part01 fxparts/part02 fxparts/part03 fxparts/part04 fxparts/part05 fxparts/part06; } | base64 -d | tar -xzf -
           chmod +x ci/e2e-fixed.sh
       - uses: actions/download-artifact@v4
         with:
