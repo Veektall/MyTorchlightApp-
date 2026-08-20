@@ -1,0 +1,172 @@
+name: fx-991MS PhotoExact20 E2E
+
+on:
+  push:
+    branches: [fx991ms-photoexact20-v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "PhotoExact20 START run ${GITHUB_RUN_ID}; head ${GITHUB_SHA}; ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rehydrate base Gradle project
+        run: |
+          { head -c 7000 fxparts/part00; cat fxparts/part01 fxparts/part02 fxparts/part03 fxparts/part04 fxparts/part05 fxparts/part06; } | base64 -d | tar -xzf -
+          rm -rf app
+          base64 -d photoexact20/source-overlay.tgz.b64 | tar -xzf -
+          chmod +x gradlew ci/e2e-photoexact20.sh
+          test -s app/src/main/java/com/veektall/fx991ms/photoexact/KeyMap.java
+          test -s app/src/main/java/com/veektall/fx991ms/photoexact/Engine.java
+          test -s app/src/main/java/com/veektall/fx991ms/photoexact/CalculatorView.java
+          test -s IMPLEMENTATION_CHECKLIST_STEPS_1_20.md
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        run: yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+      - name: Steps 1-20 JVM acceptance suite
+        run: |
+          rm -rf /tmp/fxclasses && mkdir -p /tmp/fxclasses
+          javac -d /tmp/fxclasses \
+            app/src/main/java/com/veektall/fx991ms/photoexact/Engine.java \
+            app/src/main/java/com/veektall/fx991ms/photoexact/KeyMap.java \
+            tools/Exact20SelfTest.java
+          java -cp /tmp/fxclasses com.veektall.fx991ms.photoexact.Exact20SelfTest | tee exact20-selftest.txt
+          grep -q 'PASS Exact20SelfTest' exact20-selftest.txt
+      - name: Build exact APK candidate
+        run: |
+          ./gradlew --no-daemon clean :app:assembleRelease
+          mkdir -p candidate
+          cp app/build/outputs/apk/release/app-release.apk candidate/fx-991MS-PhotoExact20.apk
+          sha256sum candidate/fx-991MS-PhotoExact20.apk | tee candidate/SHA256SUMS.txt
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 candidate/fx-991MS-PhotoExact20.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs candidate/fx-991MS-PhotoExact20.apk | tee candidate/apksigner.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging candidate/fx-991MS-PhotoExact20.apk | tee candidate/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree candidate/fx-991MS-PhotoExact20.apk AndroidManifest.xml | tee candidate/manifest-tree.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump resources candidate/fx-991MS-PhotoExact20.apk | tee candidate/resources.txt
+          grep -q "package: name='com.veektall.fx991ms.photoexact'" candidate/badging.txt
+          grep -q "versionCode='1'" candidate/badging.txt
+          grep -q "versionName='2.0.0-photoexact20'" candidate/badging.txt
+          grep -q "application-label:'fx-991MS Exact20'" candidate/badging.txt
+          grep -q 'fx991ms_app_icon' candidate/resources.txt
+          cp IMPLEMENTATION_CHECKLIST_STEPS_1_20.md candidate/
+          cp exact20-selftest.txt candidate/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photoexact20-candidate
+          path: candidate/
+          retention-days: 7
+
+  e2e:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [23, 29, 35]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract E2E script
+        run: |
+          base64 -d photoexact20/source-overlay.tgz.b64 | tar -xzf - ci/e2e-photoexact20.sh
+          chmod +x ci/e2e-photoexact20.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: photoexact20-candidate
+          path: downloaded
+      - name: Locate exact tested candidate
+        run: |
+          mkdir -p candidate
+          cp downloaded/fx-991MS-PhotoExact20.apk candidate/fx-991MS-PhotoExact20.apk
+          sha256sum candidate/fx-991MS-PhotoExact20.apk
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Enable emulator acceleration
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Install / cold launch / exact-key interactions / relaunch / logcat
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: default
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-animations: true
+          script: bash ci/e2e-photoexact20.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photoexact20-e2e-api-${{ matrix.api-level }}
+          path: e2e-out/
+          retention-days: 7
+
+  final:
+    needs: [build, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: photoexact20-candidate
+          path: downloaded
+      - name: Final identity and release gate
+        run: |
+          mkdir -p final
+          cp downloaded/fx-991MS-PhotoExact20.apk final/fx-991MS-PhotoExact20.apk
+          cp downloaded/IMPLEMENTATION_CHECKLIST_STEPS_1_20.md final/
+          cp downloaded/exact20-selftest.txt final/
+          EXPECTED=$(awk '{print $1}' downloaded/SHA256SUMS.txt)
+          ACTUAL=$(sha256sum final/fx-991MS-PhotoExact20.apk | awk '{print $1}')
+          test "$EXPECTED" = "$ACTUAL"
+          echo "$ACTUAL  fx-991MS-PhotoExact20.apk" > final/SHA256SUMS.txt
+          echo 'STEPS 1-20: PASS' > final/RELEASE-GATE.txt
+          echo 'JVM KEYMAP/ENGINE: PASS' >> final/RELEASE-GATE.txt
+          echo 'ANDROID API 23: PASS' >> final/RELEASE-GATE.txt
+          echo 'ANDROID API 29: PASS' >> final/RELEASE-GATE.txt
+          echo 'ANDROID API 35: PASS' >> final/RELEASE-GATE.txt
+          echo 'ALPHA+1 NOT X GUARD: PASS' >> final/RELEASE-GATE.txt
+          echo 'INSTALL/COLD-LAUNCH/INTERACTION/10x RELAUNCH/LOGCAT: PASS' >> final/RELEASE-GATE.txt
+          cat final/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fx-991MS-PhotoExact20-FINAL
+          path: final/
+          retention-days: 7
+
+  report:
+    if: always()
+    needs: [build, e2e, final]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          FINAL_RESULT: ${{ needs.final.result }}
+        run: |
+          gh issue comment 133 --repo "$GITHUB_REPOSITORY" --body "PhotoExact20 run ${GITHUB_RUN_ID}: build=${BUILD_RESULT}; e2e=${E2E_RESULT}; final=${FINAL_RESULT}. ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
