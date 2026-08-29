@@ -62,25 +62,29 @@ jobs:
           GAME_PID=$!
           echo $GAME_PID > /tmp/pss-out/game.pid
 
-          sleep 5
+          sleep 4
           xdotool search --name 'Pixel Subway Surfers' > /tmp/pss-out/windows.txt || true
           WIN=$(head -1 /tmp/pss-out/windows.txt || true)
-          if [ -n "$WIN" ]; then
-            xdotool windowfocus "$WIN" || true
-          fi
-          xdotool key Return || true
+          if [ -n "$WIN" ]; then xdotool windowfocus "$WIN" || true; fi
 
-          sleep 2
-          for i in 1 2 3 4 5 6 7 8; do
+          # Software GL can stretch the nominal 4-second intro. Repeated Enter is
+          # harmless during the intro and gameplay but guarantees the menu starts.
+          for i in $(seq 1 12); do
+            xdotool key Return || true
+            sleep 1
+          done
+
+          # Real game controls: jump repeatedly, then demonstrate hoverboard.
+          for i in $(seq 1 12); do
             xdotool key space || true
-            sleep 1.25
+            sleep 1.15
           done
           xdotool key h || true
-          for i in 1 2 3 4; do
-            sleep 1.3
+          for i in $(seq 1 8); do
+            sleep 1.15
             xdotool key space || true
           done
-          sleep 4
+          sleep 5
 
           ffmpeg -y -loglevel error -f x11grab -video_size 1280x720 -i :99 -frames:v 1 /tmp/pss-out/final-frame.png || true
           kill "$GAME_PID" 2>/dev/null || true
