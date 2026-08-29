@@ -74,7 +74,7 @@ jobs:
             console.log('GRAB', label, 'rowCount=', await row.count(), 'buttonCount=', await button.count());
             const [download] = await Promise.all([
               page.waitForEvent('download', {timeout:120000}),
-              button.click()
+              button.evaluate(el => el.click())
             ]);
             const dest = path.join(out, filename);
             await download.saveAs(dest);
