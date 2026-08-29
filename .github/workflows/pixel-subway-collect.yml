@@ -24,17 +24,17 @@ jobs:
       - name: Download instrumented authentic build
         uses: actions/download-artifact@v4
         with:
-          name: pixel-subway-instrumented-build
+          name: pixel-subway-instrumented-build-v2
           path: /tmp/pss-instrumented
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: Veektall/MyTorchlightApp-
-          run-id: 33245725819
+          run-id: 33245921167
 
       - name: Prepare capture runtime
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y pulseaudio pulseaudio-utils xdotool
+          sudo apt-get install -y pulseaudio pulseaudio-utils
           python -m pip install --disable-pip-version-check --quiet mss pillow numpy
           chmod +x /tmp/pss-instrumented/publish/PixelSubwaySurfersInstrumented
           mkdir -p /tmp/pss-dataset/frames /tmp/pss-runtime
@@ -52,22 +52,24 @@ jobs:
           pactl set-default-sink virtual || true
 
           cd /tmp/pss-instrumented/publish
-          PSS_DIRECT_GAMEPLAY=1 PSS_TELEMETRY=/tmp/pss-runtime/telemetry.csv \
-            ALSOFT_DRIVERS=pulse LIBGL_ALWAYS_SOFTWARE=1 \
+          PSS_DIRECT_GAMEPLAY=1 \
+          PSS_TELEMETRY=/tmp/pss-runtime/telemetry.csv \
+          PSS_ACTION_FILE=/tmp/pss-runtime/action.txt \
+          ALSOFT_DRIVERS=pulse LIBGL_ALWAYS_SOFTWARE=1 \
             ./PixelSubwaySurfersInstrumented > /tmp/pss-runtime/game.log 2>&1 &
           GAME_PID=$!
           echo $GAME_PID > /tmp/pss-runtime/game.pid
-          sleep 4
-          xdotool mousemove 640 360 click 1 || true
+          sleep 3
 
           cat > /tmp/collector.py <<'PY'
-          import csv, os, subprocess, time
+          import csv, os, time
           from pathlib import Path
           import numpy as np
           from PIL import Image
           import mss
 
           telemetry = Path('/tmp/pss-runtime/telemetry.csv')
+          action = Path('/tmp/pss-runtime/action.txt')
           out = Path('/tmp/pss-dataset')
           frames = out/'frames'
           frames.mkdir(parents=True, exist_ok=True)
@@ -93,11 +95,20 @@ jobs:
               except Exception:
                   return None
 
-          # The Xvfb is 1280x720 and the game's fixed 1000x600 window is centered at (140,60).
+          def send_action(text):
+              if action.exists(): return False
+              tmp=action.with_suffix('.tmp')
+              try:
+                  tmp.write_text(text,encoding='utf-8')
+                  os.replace(tmp,action)
+                  return True
+              except OSError:
+                  return False
+
+          # Xvfb is 1280x720; the authentic 1000x600 MonoGame window is centered.
           mon={'left':140,'top':60,'width':1000,'height':600}
-          start=time.time(); last_jump=-10.0; sample=0; prev_hx=None
-          sct=mss.mss()
-          max_wall=105.0
+          start=time.time(); last_jump=-10.0; sample=0
+          sct=mss.mss(); max_wall=105.0
           try:
               while time.time()-start < max_wall:
                   loop=time.time(); st=latest_state()
@@ -105,26 +116,21 @@ jobs:
                       time.sleep(.02); continue
                   if st['dead']:
                       print('STOP dead score',st['score']); break
-                  # Source-faithful causal variable: time until hurdle reaches player's x.
                   ttc=max(-2.0,min(5.0,(st['hurdle_x']-st['player_x'])/max(1.0,st['speed'])))
                   grounded=abs(st['velocity_y']) < 0.05
-                  # Broad positive action window; teacher sends one edge when safely inside it.
-                  jump_label=int(grounded and 0.48 <= ttc <= 0.82)
-                  sent=0
-                  now=time.time()
-                  if jump_label and now-last_jump>0.35:
-                      subprocess.run(['xdotool','key','space'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                  # Same causal policy across all speeds: jump while grounded around 0.8s TTC.
+                  jump_label=int(grounded and 0.62 <= ttc <= 0.92)
+                  sent=0; now=time.time()
+                  if jump_label and now-last_jump>0.35 and send_action('jump'):
                       last_jump=now; sent=1
-                  raw=np.asarray(sct.grab(mon))[:,:,:3][:,:,::-1]  # RGB
+                  raw=np.asarray(sct.grab(mon))[:,:,:3][:,:,::-1]
                   im=Image.fromarray(raw).resize((200,120),Image.Resampling.NEAREST)
-                  name=f'{sample:06d}.jpg'
-                  im.save(frames/name,quality=86,subsampling=0)
+                  name=f'{sample:06d}.jpg'; im.save(frames/name,quality=86,subsampling=0)
                   w.writerow([name,now-start,st['game_ms'],st['score'],st['player_x'],st['player_y'],st['velocity_y'],st['hoverboard'],st['dead'],st['hurdle_x'],st['hurdle_y'],st['hurdle_type'],st['speed'],ttc,int(grounded),jump_label,sent])
                   if sample%100==0:
-                      manifest.flush(); print('sample',sample,'score',st['score'],'speed',st['speed'],'ttc',round(ttc,3),'y',round(st['player_y'],1))
+                      manifest.flush(); print('sample',sample,'score',st['score'],'speed',st['speed'],'ttc',round(ttc,3),'y',round(st['player_y'],1),'sent',sent)
                   sample+=1
-                  delay=max(0,0.10-(time.time()-loop))
-                  time.sleep(delay)
+                  time.sleep(max(0,0.10-(time.time()-loop)))
           finally:
               manifest.flush(); manifest.close(); sct.close()
           print('COLLECTED',sample)
@@ -140,16 +146,14 @@ jobs:
           python - <<'PY'
           import csv, json, hashlib
           from pathlib import Path
-          p=Path('/tmp/pss-dataset/samples.csv')
-          rows=list(csv.DictReader(p.open()))
-          speeds=[float(r['speed']) for r in rows]
-          positives=sum(int(r['jump_label']) for r in rows)
-          sent=sum(int(r['jump_sent']) for r in rows)
+          p=Path('/tmp/pss-dataset/samples.csv'); rows=list(csv.DictReader(p.open()))
+          speeds=[float(r['speed']) for r in rows]; positives=sum(int(r['jump_label']) for r in rows); sent=sum(int(r['jump_sent']) for r in rows)
+          scores=[int(r['score']) for r in rows]
           summary={'samples':len(rows),'positive_labels':positives,'jump_edges_sent':sent,
                    'min_speed':min(speeds) if speeds else None,'max_speed':max(speeds) if speeds else None,
+                   'max_score':max(scores) if scores else None,
                    'csv_sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
-          Path('/tmp/pss-dataset/summary.json').write_text(json.dumps(summary,indent=2))
-          print(json.dumps(summary,indent=2))
+          Path('/tmp/pss-dataset/summary.json').write_text(json.dumps(summary,indent=2)); print(json.dumps(summary,indent=2))
           PY
           du -sh /tmp/pss-dataset
 
@@ -157,7 +161,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pixel-subway-visual-dataset
+          name: pixel-subway-visual-dataset-v2
           path: /tmp/pss-dataset
           if-no-files-found: error
           retention-days: 1
