@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, csv, hashlib, json, math, os, re, shutil, subprocess, sys
+import argparse, csv, hashlib, json, math, re, shutil, subprocess, sys
 from collections import Counter
 from pathlib import Path
 
@@ -24,13 +24,12 @@ def sha256(path):
 
 
 def ffprobe(path):
-    p = run(['ffprobe','-v','error','-show_entries','format=duration:stream=width,height,avg_frame_rate',
-             '-of','json',str(path)])
+    p = run(['ffprobe','-v','error','-show_entries','format=duration:stream=width,height,avg_frame_rate','-of','json',str(path)])
     return json.loads(p.stdout)
 
 
 def detect_crop(path):
-    p = run(['ffmpeg','-hide_banner','-ss','10','-t','45','-i',str(path),
+    p = run(['ffmpeg','-hide_banner','-ss','5','-t','40','-i',str(path),
              '-vf','cropdetect=limit=24:round=2:reset=0','-f','null','-'], check=False)
     text = (p.stderr or '') + (p.stdout or '')
     crops = re.findall(r'crop=(\d+):(\d+):(\d+):(\d+)', text)
@@ -40,33 +39,43 @@ def detect_crop(path):
     return ':'.join(crop)
 
 
+def find_precaptured(sid, raw_dir):
+    candidates=[]
+    for x in raw_dir.glob(f'{sid}.*'):
+        if x.suffix.lower() in {'.mp4','.webm','.mkv','.mov'}:
+            candidates.append(x)
+    return sorted(candidates)[0] if candidates else None
+
+
 def download_source(row, raw_dir, max_seconds):
     sid = row['source_id']
+    existing=find_precaptured(sid,raw_dir)
+    if existing:
+        meta_path=Path(str(existing)+'.meta.json')
+        info=json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        return existing,info,'browser_capture'
+
     template = str(raw_dir / f'{sid}.%(ext)s')
     cmd = ['yt-dlp','--no-playlist','--no-progress','--write-info-json',
            '--merge-output-format','mp4','-f','best[height<=720]/best',
-           '--download-sections',f'*0-{max_seconds}',
-           '-o',template,row['url']]
+           '--download-sections',f'*0-{max_seconds}','-o',template,row['url']]
     p = run(cmd, check=False)
     if p.returncode != 0:
         raise RuntimeError((p.stderr or p.stdout or 'yt-dlp failed')[-4000:])
-    media = sorted([x for x in raw_dir.glob(f'{sid}.*') if x.suffix not in ['.json','.part','.ytdl']])
+    media = find_precaptured(sid,raw_dir)
     if not media:
         raise RuntimeError('yt-dlp completed but no media file was found')
     info_path = raw_dir / f'{sid}.info.json'
     info = json.loads(info_path.read_text()) if info_path.exists() else {}
-    return media[0], info
+    return media, info, 'yt_dlp'
 
 
 def normalize(raw, out_path, crop, max_seconds):
     filters = []
     if crop:
         filters.append(f'crop={crop}')
-    filters += [
-        'scale=360:640:force_original_aspect_ratio=decrease',
-        'pad=360:640:(ow-iw)/2:(oh-ih)/2:black',
-        'fps=15'
-    ]
+    filters += ['scale=360:640:force_original_aspect_ratio=decrease',
+                'pad=360:640:(ow-iw)/2:(oh-ih)/2:black','fps=15']
     run(['ffmpeg','-y','-hide_banner','-loglevel','error','-i',str(raw),'-t',str(max_seconds),
          '-vf',','.join(filters),'-an','-c:v','libx264','-preset','veryfast','-crf','23',
          '-g','30','-keyint_min','30','-sc_threshold','0','-pix_fmt','yuv420p',str(out_path)])
@@ -141,7 +150,7 @@ def main():
     for row in approved:
         sid=row['source_id']
         try:
-            raw,info=download_source(row,raw_dir,args.max_seconds)
+            raw,info,acquisition=download_source(row,raw_dir,args.max_seconds)
             crop=detect_crop(raw)
             norm=norm_dir/f'{sid}.mp4'
             normalize(raw,norm,crop,args.max_seconds)
@@ -149,8 +158,9 @@ def main():
             source_record={
                 'source_id':sid,'url':row['url'],'category':row['category'],
                 'reuse_status':row['reuse_status'],'title':info.get('title'),
-                'uploader':info.get('uploader'),'downloaded_duration_sec':round(duration,3),
-                'crop':crop,'normalized_sha256':sha256(norm)
+                'uploader':info.get('uploader'),'acquisition':acquisition,
+                'downloaded_duration_sec':round(duration,3),'crop':crop,
+                'normalized_sha256':sha256(norm)
             }
             sources.append(source_record)
             sdir=clips_dir/sid; sdir.mkdir(parents=True,exist_ok=True)
@@ -160,13 +170,11 @@ def main():
                 run(['ffmpeg','-y','-v','error','-ss',f'{start:.3f}','-i',str(norm),
                      '-t',str(args.clip_seconds),'-c','copy','-avoid_negative_ts','make_zero',str(clip)])
                 qc=clip_qc(clip)
-                rec={'source_id':sid,'clip_path':str(clip.relative_to(root)),
+                records.append({'source_id':sid,'clip_path':str(clip.relative_to(root)),
                      'start_sec':round(start,3),'end_sec':round(start+args.clip_seconds,3),
                      'frames_nominal':args.clip_seconds*15,'width':360,'height':640,'fps':15,
-                     'crop':crop,'reuse_status':row['reuse_status'],**qc}
-                records.append(rec)
+                     'crop':crop,'reuse_status':row['reuse_status'],**qc})
                 idx+=1; start+=args.stride_seconds
-            # Raw source is an ingestion intermediate; do not preserve it in the artifact.
             for p in raw_dir.glob(f'{sid}.*'):
                 p.unlink(missing_ok=True)
         except Exception as e:
