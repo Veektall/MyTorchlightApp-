@@ -1,0 +1,185 @@
+name: Pixel Subway Closed Loop Eval
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'pixel-subway-eval-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download trained policies
+        uses: actions/download-artifact@v4
+        with:
+          name: pixel-subway-policy-experiment-v3
+          path: /tmp/pss-policies
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Veektall/MyTorchlightApp-
+          run-id: 33246418283
+
+      - name: Download instrumented authentic game
+        uses: actions/download-artifact@v4
+        with:
+          name: pixel-subway-instrumented-build-v3
+          path: /tmp/pss-game
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Veektall/MyTorchlightApp-
+          run-id: 33246040555
+
+      - name: Prepare evaluation runtime
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils ffmpeg
+          python -m pip install --disable-pip-version-check --quiet torch pillow numpy mss
+          chmod +x /tmp/pss-game/publish/PixelSubwaySurfersInstrumented
+          mkdir -p /tmp/pss-eval
+
+      - name: Run pixel-only closed-loop policies
+        run: |
+          set -euxo pipefail
+          pulseaudio --start --exit-idle-time=-1 --log-target=file:/tmp/pss-eval/pulse.log || true
+          sleep 1
+          pactl load-module module-null-sink sink_name=virtual sink_properties=device.description=Virtual >/tmp/pss-eval/pulse-module.txt || true
+          pactl set-default-sink virtual || true
+
+          cat > /tmp/eval_policy.py <<'PY'
+          import json, os, sys, time
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image
+          import torch
+          import torch.nn as nn
+          import torch.nn.functional as F
+          import mss
+
+          class Net(nn.Module):
+              def __init__(self):
+                  super().__init__()
+                  self.conv=nn.Sequential(
+                    nn.Conv2d(6,16,5,2,2),nn.ReLU(),
+                    nn.Conv2d(16,32,3,2,1),nn.ReLU(),
+                    nn.Conv2d(32,64,3,2,1),nn.ReLU(),
+                    nn.AdaptiveAvgPool2d((2,4)))
+                  self.fc=nn.Linear(64*2*4,16); self.head=nn.Linear(16,1)
+              def forward(self,x):
+                  z=torch.tanh(self.fc(self.conv(x).flatten(1)))
+                  return self.head(z).squeeze(1),z
+
+          model_path=Path(sys.argv[1]); out=Path(sys.argv[2]); action=Path(sys.argv[3])
+          ck=torch.load(model_path,map_location='cpu',weights_only=False)
+          model=Net(); model.load_state_dict(ck['state_dict']); model.eval(); threshold=float(ck['threshold'])
+          out.mkdir(parents=True,exist_ok=True)
+          mon={'left':140,'top':60,'width':1000,'height':600}
+          sct=mss.mss()
+
+          def prep(raw):
+              im=Image.fromarray(raw).resize((200,120),Image.Resampling.NEAREST)
+              arr=np.asarray(im,dtype=np.float32)/255.0
+              arr=arr[38:120,:,:]
+              t=torch.from_numpy(arr).permute(2,0,1)
+              return F.interpolate(t.unsqueeze(0),size=(64,128),mode='bilinear',align_corners=False).squeeze(0)
+
+          def grab():
+              raw=np.asarray(sct.grab(mon))[:,:,:3][:,:,::-1]
+              return prep(raw)
+
+          def send_jump():
+              if action.exists(): return False
+              tmp=action.with_suffix('.tmp')
+              try:
+                  tmp.write_text('jump',encoding='utf-8'); os.replace(tmp,action); return True
+              except OSError: return False
+
+          prev=grab(); start=time.time(); last_jump=-10.0; actions=0; decisions=0; probs=[]
+          while time.time()-start < 90.0:
+              loop=time.time(); cur=grab()
+              x=torch.cat([prev,cur],0).unsqueeze(0)
+              with torch.no_grad(): prob=float(torch.sigmoid(model(x)[0]).item())
+              probs.append(prob); decisions+=1
+              now=time.time()
+              if prob>=threshold and now-last_jump>=0.25 and send_jump():
+                  actions+=1; last_jump=now
+              prev=cur
+              time.sleep(max(0,0.10-(time.time()-loop)))
+          sct.close()
+          (out/'policy_runtime.json').write_text(json.dumps({
+              'model':model_path.name,'variant':ck.get('variant'),'seed':ck.get('seed'),'threshold':threshold,
+              'decisions':decisions,'jump_commands':actions,'mean_probability':float(np.mean(probs)) if probs else None,
+              'max_probability':float(np.max(probs)) if probs else None,'policy_inputs':'pixels_only_two_consecutive_frames'
+          },indent=2))
+          PY
+
+          cat > /tmp/summarize.py <<'PY'
+          import csv,json,sys
+          from pathlib import Path
+          d=Path(sys.argv[1]); t=d/'telemetry.csv'
+          rows=list(csv.DictReader(t.open())) if t.exists() else []
+          runtime=json.loads((d/'policy_runtime.json').read_text())
+          runtime.update({
+            'max_score':max([int(r['score']) for r in rows],default=0),
+            'max_speed':max([float(r['speed']) for r in rows],default=0.0),
+            'death_observed':any(int(r['dead']) for r in rows),
+            'telemetry_used_by_policy':False
+          })
+          (d/'result.json').write_text(json.dumps(runtime,indent=2)); print(json.dumps(runtime,indent=2))
+          PY
+
+          run_one() {
+            VARIANT="$1"; DISPLAY_NUM="$2"; MODEL="/tmp/pss-policies/selected_${VARIANT}.pt"; OUT="/tmp/pss-eval/${VARIANT}"
+            mkdir -p "$OUT"
+            export DISPLAY=":${DISPLAY_NUM}"
+            Xvfb ":${DISPLAY_NUM}" -screen 0 1280x720x24 -nolisten tcp > "$OUT/xvfb.log" 2>&1 &
+            XVFB_PID=$!
+            sleep 1
+            cd /tmp/pss-game/publish
+            rm -f "$OUT/action.txt"
+            PSS_DIRECT_GAMEPLAY=1 PSS_TELEMETRY="$OUT/telemetry.csv" PSS_ACTION_FILE="$OUT/action.txt" \
+              ALSOFT_DRIVERS=pulse LIBGL_ALWAYS_SOFTWARE=1 ./PixelSubwaySurfersInstrumented > "$OUT/game.log" 2>&1 &
+            GAME_PID=$!
+            sleep 3
+            ffmpeg -y -loglevel warning -f x11grab -framerate 15 -video_size 1280x720 -i ":${DISPLAY_NUM}" \
+              -c:v libx264 -preset veryfast -crf 24 -pix_fmt yuv420p "$OUT/${VARIANT}-closed-loop.mp4" > "$OUT/ffmpeg.log" 2>&1 &
+            FF_PID=$!
+            python /tmp/eval_policy.py "$MODEL" "$OUT" "$OUT/action.txt"
+            kill "$GAME_PID" 2>/dev/null || true
+            sleep 1
+            kill -INT "$FF_PID" 2>/dev/null || true
+            wait "$FF_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+            python /tmp/summarize.py "$OUT"
+          }
+
+          run_one baseline 99
+          run_one geometry 100
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/pss-eval')
+          b=json.loads((root/'baseline/result.json').read_text()); g=json.loads((root/'geometry/result.json').read_text())
+          summary={'baseline':b,'geometry':g,'score_delta_geometry_minus_baseline':g['max_score']-b['max_score'],
+                   'speed_delta_geometry_minus_baseline':g['max_speed']-b['max_speed']}
+          (root/'closed_loop_summary.json').write_text(json.dumps(summary,indent=2)); print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Upload closed-loop evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-subway-closed-loop-v3
+          path: /tmp/pss-eval
+          if-no-files-found: error
+          retention-days: 1
