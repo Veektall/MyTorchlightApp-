@@ -5,7 +5,10 @@ on:
     branches: [subway-video-corpus]
     paths:
       - 'subway_ai/data/video_manifest.csv'
+      - 'subway_ai/data/stage4_pilot_semantic.json'
       - 'subway_ai/scripts/prepare_video_corpus.py'
+      - 'subway_ai/scripts/finalize_corpus_metadata.py'
+      - 'subway_ai/scripts/infer_pseudo_actions.py'
       - 'subway_ai/video-corpus-trigger.txt'
       - '.github/workflows/subway-video-corpus.yml'
 
@@ -26,7 +29,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg curl
           python -m pip install --upgrade pip
-          pip install 'yt-dlp>=2025.8.22' numpy pillow
+          pip install 'yt-dlp>=2025.8.22' numpy pillow opencv-python-headless
       - name: Acquire one approved direct-media pilot
         run: |
           set -euxo pipefail
@@ -55,16 +58,37 @@ jobs:
             --max-seconds 30 \
             --clip-seconds 4 \
             --stride-seconds 2
+          python subway_ai/scripts/finalize_corpus_metadata.py \
+            --manifest subway_ai/data/video_manifest.csv \
+            --root /tmp/subway-video-corpus
           cat /tmp/subway-video-corpus/summary.json
+      - name: Stage 4 pixel-only action candidates and pseudo-label merge
+        run: |
+          set -euxo pipefail
+          if [ -f subway_ai/data/stage4_pilot_semantic.json ]; then
+            python subway_ai/scripts/infer_pseudo_actions.py \
+              --root /tmp/subway-video-corpus \
+              --semantic-labels subway_ai/data/stage4_pilot_semantic.json
+          else
+            python subway_ai/scripts/infer_pseudo_actions.py \
+              --root /tmp/subway-video-corpus
+          fi
+          cat /tmp/subway-video-corpus/stage4_summary.json
           du -sh /tmp/subway-video-corpus || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: subway-video-corpus-pilot
+          name: subway-video-corpus-stage4-pilot
           path: |
             /tmp/subway-video-corpus/summary.json
             /tmp/subway-video-corpus/index.jsonl
             /tmp/subway-video-corpus/contact-sheet.jpg
             /tmp/subway-video-corpus/clips
+            /tmp/subway-video-corpus/stage4_summary.json
+            /tmp/subway-video-corpus/stage4_candidates.jsonl
+            /tmp/subway-video-corpus/stage4_signals.csv
+            /tmp/subway-video-corpus/stage4-contact-sheet.jpg
+            /tmp/subway-video-corpus/stage4_review_clips
+            /tmp/subway-video-corpus/pseudo_actions.jsonl
           retention-days: 1
           if-no-files-found: warn
