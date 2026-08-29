@@ -5,7 +5,7 @@ on:
     branches: [subway-video-corpus]
     paths:
       - 'subway_ai/data/video_manifest.csv'
-      - 'subway_ai/scripts/acquire_stage5_source.js'
+      - 'subway_ai/scripts/acquire_stage5_piped.py'
       - 'subway_ai/scripts/validate_stage5_source.py'
       - 'subway_ai/scripts/prepare_video_corpus.py'
       - 'subway_ai/scripts/finalize_corpus_metadata.py'
@@ -26,46 +26,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install corpus and browser tools
+      - name: Install corpus tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg curl p7zip-full
+          sudo apt-get install -y ffmpeg curl
           python -m pip install --upgrade pip
           pip install numpy pillow opencv-python-headless
-          npm install --no-save playwright@1.55.0
-          npx playwright install --with-deps chromium
-      - name: Stage 5 acquire verified Top-20 source
+      - name: Stage 5 acquire Top-20 expert source via public Piped API
         run: |
           set -euxo pipefail
-          rm -rf /tmp/subway-video-corpus /tmp/stage5-download* /tmp/stage5-extract
-          mkdir -p /tmp/subway-video-corpus/raw /tmp/stage5-extract
+          rm -rf /tmp/subway-video-corpus
+          mkdir -p /tmp/subway-video-corpus/raw
           python - <<'PY' > /tmp/stage5.tsv
           import csv
           r=next(x for x in csv.DictReader(open('subway_ai/data/video_manifest.csv')) if x['source_id']=='ludo_top20_2022')
-          print('\t'.join([r['source_id'],r['transport_locator'],r['expected_sha256']]))
+          print('\t'.join([r['source_id'],r['transport_locator']]))
           PY
-          IFS=$'\t' read -r SID SAMPLE EXPECTED_SHA < /tmp/stage5.tsv
-          node subway_ai/scripts/acquire_stage5_source.js --sample "$SAMPLE" --out /tmp/stage5-download.bin --sha256 "$EXPECTED_SHA"
-          file /tmp/stage5-download.bin
-          if file /tmp/stage5-download.bin | grep -qi 'zip archive'; then
-            7z x -y -pinfected -o/tmp/stage5-extract /tmp/stage5-download.bin || 7z x -y -o/tmp/stage5-extract /tmp/stage5-download.bin
-            MEDIA="$(find /tmp/stage5-extract -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.webm' \) -print -quit)"
-            test -n "$MEDIA"
-            cp "$MEDIA" "/tmp/subway-video-corpus/raw/${SID}.mp4"
-          else
-            cp /tmp/stage5-download.bin "/tmp/subway-video-corpus/raw/${SID}.mp4"
-          fi
-          ACTUAL_SHA="$(sha256sum "/tmp/subway-video-corpus/raw/${SID}.mp4" | awk '{print $1}')"
-          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
-          ffprobe -v error -show_entries format=duration,size:stream=width,height,avg_frame_rate -of json "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          IFS=$'\t' read -r SID VIDEO_ID < /tmp/stage5.tsv
+          python subway_ai/scripts/acquire_stage5_piped.py \
+            --video-id "$VIDEO_ID" \
+            --expected-title "Top 20 Global Player" \
+            --out "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          sha256sum "/tmp/subway-video-corpus/raw/${SID}.mp4" | tee /tmp/subway-video-corpus/stage5_acquired_sha256.txt
+          cat "/tmp/subway-video-corpus/raw/${SID}.mp4.transport.json"
           python subway_ai/scripts/validate_stage5_source.py \
             --video "/tmp/subway-video-corpus/raw/${SID}.mp4" \
             --manifest subway_ai/data/video_manifest.csv \
             --source-id "$SID" \
-            --expected-sha256 "$EXPECTED_SHA" \
             --out /tmp/subway-video-corpus
       - name: Build full canonical continuous corpus
         run: |
@@ -99,6 +86,8 @@ jobs:
         with:
           name: subway-stages5-6-corpus
           path: |
+            /tmp/subway-video-corpus/stage5_acquired_sha256.txt
+            /tmp/subway-video-corpus/raw/*.transport.json
             /tmp/subway-video-corpus/stage5_source_report.json
             /tmp/subway-video-corpus/stage5_promoted_manifest.csv
             /tmp/subway-video-corpus/summary.json
