@@ -1,0 +1,44 @@
+name: Subway Surfers Exact WebGL Matrix
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'subway-surfers-webgl-matrix-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser and Mesa diagnostics
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-utils libgl1-mesa-dri
+      - name: Probe exact Pixi WebGL requirement
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/subway-webgl-matrix
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' bash -lc '
+            glxinfo -B > /tmp/subway-webgl-matrix/glxinfo.txt 2>&1 || true
+            node subway-webgl-matrix.js
+          '
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-surfers-webgl-matrix
+          path: /tmp/subway-webgl-matrix
+          retention-days: 1
+          if-no-files-found: error
