@@ -1,0 +1,93 @@
+name: Pixel Subway Instrumented Build
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - '.github/workflows/pixel-subway-instrumented-build.yml'
+      - 'pixel-subway-build-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download authentic source/build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pixel-subway-authentic
+          path: /tmp/pss-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Veektall/MyTorchlightApp-
+          run-id: 33245344268
+
+      - name: Unpack and instrument source
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/pss-src /tmp/pss-original-linux /tmp/pss-out
+          unzip -q /tmp/pss-artifact/PSSSourcecode.zip -d /tmp/pss-src
+          unzip -q /tmp/pss-artifact/PSSLinux.zip -d /tmp/pss-original-linux
+          cd /tmp/pss-src
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('Game1.cs')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('Manager.LoadScreen(new Intro(this));', '''if (System.Environment.GetEnvironmentVariable("PSS_DIRECT_GAMEPLAY") == "1")\n            Manager.LoadScreen(new Gameplay(this));\n        else\n            Manager.LoadScreen(new Intro(this));''')
+          p.write_text(s, encoding='utf-8')
+
+          p=Path('Sprites/Player.cs')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('public bool Lost;\n', 'public bool Lost;\n    public float VelocityY => velocity.Y;\n    public int HoverboardsRemaining => hbLimit;\n')
+          p.write_text(s, encoding='utf-8')
+
+          p=Path('Sprites/Hurdle.cs')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('public Vector2 Position;\n', 'public Vector2 Position;\n        public float SpeedValue => Speed;\n        public int TypeIndex => HurdleSprite != null && HurdleSprite.Name == "hurdle 1" ? 1 : 0;\n')
+          p.write_text(s, encoding='utf-8')
+
+          p=Path('Levels/Gameplay.cs')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('using System;\n', 'using System;\nusing System.IO;\n')
+          s=s.replace('private BitmapFont font;\n', 'private BitmapFont font;\n    private StreamWriter telemetry;\n')
+          s=s.replace('Globals.Score = 0;\n', '''Globals.Score = 0;\n        string tp = Environment.GetEnvironmentVariable("PSS_TELEMETRY");\n        if (!string.IsNullOrWhiteSpace(tp)) {\n            telemetry = new StreamWriter(tp, false);\n            telemetry.AutoFlush = true;\n            telemetry.WriteLine("game_ms,score,player_x,player_y,velocity_y,hoverboard,dead,hurdle_x,hurdle_y,hurdle_type,speed");\n        }\n''')
+          needle='''        if (Globals.Score >= Globals.Highscore) {\n            Globals.Highscore = Globals.Score;\n        }\n'''
+          repl=needle+'''        if (telemetry != null) {\n            telemetry.WriteLine($"{gameTime.TotalGameTime.TotalMilliseconds:F3},{Globals.Score},{player.Position.X:F3},{player.Position.Y:F3},{player.VelocityY:F3},{(player.Hoverboard ? 1 : 0)},{(player.Dead ? 1 : 0)},{hurdle.Position.X:F3},{hurdle.Position.Y:F3},{hurdle.TypeIndex},{hurdle.SpeedValue:F3}");\n        }\n'''
+          if needle not in s: raise SystemExit('Gameplay telemetry insertion point missing')
+          s=s.replace(needle,repl)
+          p.write_text(s, encoding='utf-8')
+
+          Path('Instrumented.csproj').write_text('''<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <RollForward>Major</RollForward>\n    <PublishReadyToRun>false</PublishReadyToRun>\n    <TieredCompilation>false</TieredCompilation>\n    <AssemblyName>PixelSubwaySurfersInstrumented</AssemblyName>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include="MonoGame.Aseprite" Version="6.0.7" />\n    <PackageReference Include="MonoGame.Extended" Version="4.0.2" />\n    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.2.1105" />\n    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />\n  </ItemGroup>\n</Project>\n''', encoding='utf-8')
+          PY
+
+          grep -R "PSS_TELEMETRY\|VelocityY\|SpeedValue\|PSS_DIRECT_GAMEPLAY" -n Game1.cs Levels/Gameplay.cs Sprites/*.cs
+
+      - name: Publish instrumented Linux build
+        run: |
+          set -euxo pipefail
+          cd /tmp/pss-src
+          dotnet restore Instrumented.csproj
+          dotnet publish Instrumented.csproj -c Release -r linux-x64 --self-contained true -o /tmp/pss-out/publish
+          rm -rf /tmp/pss-out/publish/Content
+          cp -a /tmp/pss-original-linux/Content /tmp/pss-out/publish/Content
+          chmod +x /tmp/pss-out/publish/PixelSubwaySurfersInstrumented
+          sha256sum /tmp/pss-out/publish/PixelSubwaySurfersInstrumented > /tmp/pss-out/instrumented-sha256.txt
+          find /tmp/pss-out/publish -maxdepth 2 -type f | sort | head -100 || true
+
+      - name: Upload instrumented build
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-subway-instrumented-build
+          path: /tmp/pss-out
+          if-no-files-found: error
+          retention-days: 1
