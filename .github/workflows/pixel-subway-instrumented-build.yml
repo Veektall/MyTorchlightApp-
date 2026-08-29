@@ -48,7 +48,7 @@ jobs:
 
           p=Path('Sprites/Player.cs')
           s=p.read_text(encoding='utf-8-sig')
-          s=s.replace('public bool Lost;\n', 'public bool Lost;\n    public float VelocityY => velocity.Y;\n    public int HoverboardsRemaining => hbLimit;\n')
+          s=s.replace('public bool Lost;\n', '''public bool Lost;\n    public float VelocityY => velocity.Y;\n    public int HoverboardsRemaining => hbLimit;\n    public void TestJump() { if (velocity.Y == 0 && !Dead) { velocity.Y = JumpForce; jump.Play(); } }\n    public void TestHover() { if (HbTimer <= 0 && hbLimit > 0 && !Dead) { if (hbLimit > 1) HbTimer = 15000; hbLimit -= 1; } }\n''')
           p.write_text(s, encoding='utf-8')
 
           p=Path('Sprites/Hurdle.cs')
@@ -59,8 +59,9 @@ jobs:
           p=Path('Levels/Gameplay.cs')
           s=p.read_text(encoding='utf-8-sig')
           s=s.replace('using System;\n', 'using System;\nusing System.IO;\n')
-          s=s.replace('private BitmapFont font;\n', 'private BitmapFont font;\n    private StreamWriter telemetry;\n')
-          s=s.replace('Globals.Score = 0;\n', '''Globals.Score = 0;\n        string tp = Environment.GetEnvironmentVariable("PSS_TELEMETRY");\n        if (!string.IsNullOrWhiteSpace(tp)) {\n            telemetry = new StreamWriter(tp, false);\n            telemetry.AutoFlush = true;\n            telemetry.WriteLine("game_ms,score,player_x,player_y,velocity_y,hoverboard,dead,hurdle_x,hurdle_y,hurdle_type,speed");\n        }\n''')
+          s=s.replace('private BitmapFont font;\n', 'private BitmapFont font;\n    private StreamWriter telemetry;\n    private string actionPath;\n')
+          s=s.replace('Globals.Score = 0;\n', '''Globals.Score = 0;\n        actionPath = Environment.GetEnvironmentVariable("PSS_ACTION_FILE");\n        string tp = Environment.GetEnvironmentVariable("PSS_TELEMETRY");\n        if (!string.IsNullOrWhiteSpace(tp)) {\n            telemetry = new StreamWriter(tp, false);\n            telemetry.AutoFlush = true;\n            telemetry.WriteLine("game_ms,score,player_x,player_y,velocity_y,hoverboard,dead,hurdle_x,hurdle_y,hurdle_type,speed");\n        }\n''')
+          s=s.replace('''    public override void Update(GameTime gameTime)\n    {\n        player.Update(gameTime, Game.Graphics);''', '''    public override void Update(GameTime gameTime)\n    {\n        if (!string.IsNullOrWhiteSpace(actionPath) && File.Exists(actionPath)) {\n            try {\n                string action = File.ReadAllText(actionPath).Trim().ToLowerInvariant();\n                File.Delete(actionPath);\n                if (action == "jump") player.TestJump();\n                else if (action == "hover") player.TestHover();\n            } catch (IOException) { }\n        }\n        player.Update(gameTime, Game.Graphics);''')
           needle='''        if (Globals.Score >= Globals.Highscore) {\n            Globals.Highscore = Globals.Score;\n        }\n'''
           repl=needle+'''        if (telemetry != null) {\n            telemetry.WriteLine($"{gameTime.TotalGameTime.TotalMilliseconds:F3},{Globals.Score},{player.Position.X:F3},{player.Position.Y:F3},{player.VelocityY:F3},{(player.Hoverboard ? 1 : 0)},{(player.Dead ? 1 : 0)},{hurdle.Position.X:F3},{hurdle.Position.Y:F3},{hurdle.TypeIndex},{hurdle.SpeedValue:F3}");\n        }\n'''
           if needle not in s: raise SystemExit('Gameplay telemetry insertion point missing')
@@ -70,7 +71,7 @@ jobs:
           Path('Instrumented.csproj').write_text('''<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net8.0</TargetFramework>\n    <RollForward>Major</RollForward>\n    <PublishReadyToRun>false</PublishReadyToRun>\n    <TieredCompilation>false</TieredCompilation>\n    <AssemblyName>PixelSubwaySurfersInstrumented</AssemblyName>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include="MonoGame.Aseprite" Version="6.0.7" />\n    <PackageReference Include="MonoGame.Extended" Version="4.0.2" />\n    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.2.1105" />\n    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />\n  </ItemGroup>\n</Project>\n''', encoding='utf-8')
           PY
 
-          grep -R "PSS_TELEMETRY\|VelocityY\|SpeedValue\|PSS_DIRECT_GAMEPLAY" -n Game1.cs Levels/Gameplay.cs Sprites/*.cs
+          grep -R "PSS_TELEMETRY\|PSS_ACTION_FILE\|TestJump\|VelocityY\|SpeedValue\|PSS_DIRECT_GAMEPLAY" -n Game1.cs Levels/Gameplay.cs Sprites/*.cs
 
       - name: Publish instrumented Linux build
         run: |
@@ -82,12 +83,11 @@ jobs:
           cp -a /tmp/pss-original-linux/Content /tmp/pss-out/publish/Content
           chmod +x /tmp/pss-out/publish/PixelSubwaySurfersInstrumented
           sha256sum /tmp/pss-out/publish/PixelSubwaySurfersInstrumented > /tmp/pss-out/instrumented-sha256.txt
-          find /tmp/pss-out/publish -maxdepth 2 -type f | sort | head -100 || true
 
       - name: Upload instrumented build
         uses: actions/upload-artifact@v4
         with:
-          name: pixel-subway-instrumented-build
+          name: pixel-subway-instrumented-build-v2
           path: /tmp/pss-out
           if-no-files-found: error
           retention-days: 1
