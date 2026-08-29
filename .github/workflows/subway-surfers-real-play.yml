@@ -1,0 +1,119 @@
+name: Real Subway Surfers Linux Play
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'subway-surfers-real-play-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Linux browser runtime
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg
+      - name: Run authentic Subway Surfers with software-GPU compatibility shim
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/subway-real && mkdir -p /tmp/subway-real/frames
+          cat > subway-real-play.js <<'JS'
+          const { chromium } = require('playwright');
+          const fs=require('fs');
+          const crypto=require('crypto');
+          const OUT='/tmp/subway-real';
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
+          (async()=>{
+            const browser=await chromium.launch({headless:false,args:[
+              '--autoplay-policy=no-user-gesture-required','--enable-webgl','--ignore-gpu-blocklist',
+              '--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader-webgl',
+              '--disable-dev-shm-usage','--no-sandbox'
+            ]});
+            const context=await browser.newContext({viewport:{width:1280,height:720},locale:'en-US',recordVideo:{dir:`${OUT}/video`,size:{width:1280,height:720}}});
+            // Compatibility-only: honor the game's requested stencil buffer while allowing the
+            // software GPU despite Chromium marking software rendering as a major performance caveat.
+            await context.addInitScript(()=>{
+              const original=HTMLCanvasElement.prototype.getContext;
+              HTMLCanvasElement.prototype.getContext=function(type,attrs){
+                if((type==='webgl'||type==='experimental-webgl'||type==='webgl2') && attrs && attrs.failIfMajorPerformanceCaveat===true){
+                  attrs={...attrs,failIfMajorPerformanceCaveat:false};
+                }
+                return original.call(this,type,attrs);
+              };
+            });
+            const page=await context.newPage();
+            page.on('console',m=>fs.appendFileSync(`${OUT}/console.log`,`[${m.type()}] ${m.text()}\n`));
+            page.on('pageerror',e=>fs.appendFileSync(`${OUT}/pageerror.log`,String(e)+'\n'));
+            await page.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000});
+
+            let game=null,canvas=null;
+            const deadline=Date.now()+90000;
+            while(Date.now()<deadline){
+              const g=page.frames().filter(f=>f.url().includes('.gdn.poki.com')).pop();
+              if(g){
+                game=g;
+                const c=g.locator('#pixi-canvas');
+                if(await c.count().catch(()=>0)){canvas=c;break;}
+              }
+              await sleep(1000);
+            }
+            if(!game) throw new Error('official game frame not found');
+            const exact=await game.evaluate(()=>{
+              const c=document.createElement('canvas');
+              const gl=c.getContext('webgl',{stencil:true,failIfMajorPerformanceCaveat:true});
+              return {ok:!!gl,attrs:gl?gl.getContextAttributes():null,canvasCount:document.querySelectorAll('canvas').length,bodyText:(document.body?.innerText||'').slice(0,1000)};
+            });
+            fs.writeFileSync(`${OUT}/runtime-state.json`,JSON.stringify({gameUrl:game.url(),exact},null,2));
+            if(!canvas) throw new Error(`pixi canvas never appeared: ${JSON.stringify(exact)}`);
+
+            const snap=async(name)=>{
+              const b=await canvas.screenshot(); fs.writeFileSync(`${OUT}/frames/${name}.png`,b); return sha(b);
+            };
+            const timeline=[];
+            timeline.push({t:Date.now(),event:'canvas_ready',hash:await snap('00-ready')});
+            const box=await canvas.boundingBox();
+            if(box) await canvas.click({position:{x:box.width/2,y:box.height/2},force:true});
+            await sleep(1200);
+
+            // Start attempts are ordinary official desktop inputs; no game-state hooks are used.
+            for(const key of ['Space','Enter','ArrowUp','Space']){
+              await page.keyboard.press(key); await sleep(1500);
+              timeline.push({t:Date.now(),event:`start:${key}`,hash:await snap(`start-${key.replace('Arrow','')}`)});
+            }
+            // Play a deterministic smoke sequence long enough to visibly enter a run if started.
+            const seq=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','ArrowRight','ArrowUp','ArrowLeft','ArrowDown','ArrowRight','ArrowUp','ArrowLeft','ArrowUp','ArrowRight','ArrowDown','ArrowLeft','ArrowUp'];
+            let i=0;
+            for(const key of seq){
+              await page.keyboard.press(key); await sleep(900);
+              timeline.push({t:Date.now(),event:key,hash:await snap(`${String(i++).padStart(2,'0')}-${key.replace('Arrow','')}`)});
+            }
+            await sleep(6000);
+            timeline.push({t:Date.now(),event:'final',hash:await snap('99-final')});
+            fs.writeFileSync(`${OUT}/timeline.json`,JSON.stringify(timeline,null,2));
+            const v=page.video(); await page.close(); await context.close();
+            if(v){const p=await v.path();fs.copyFileSync(p,`${OUT}/real-subway-surfers.webm`)}
+            await browser.close();
+          })().catch(e=>{fs.writeFileSync(`${OUT}/fatal.txt`,String(e.stack||e));console.error(e);process.exit(1)});
+          JS
+          xvfb-run -a -s '-screen 0 1280x720x24' node subway-real-play.js
+          ffmpeg -y -loglevel warning -i /tmp/subway-real/real-subway-surfers.webm -c:v libx264 -pix_fmt yuv420p /tmp/subway-real/real-subway-surfers.mp4
+          find /tmp/subway-real -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-subway-surfers-linux-play
+          path: /tmp/subway-real
+          retention-days: 1
+          if-no-files-found: error
