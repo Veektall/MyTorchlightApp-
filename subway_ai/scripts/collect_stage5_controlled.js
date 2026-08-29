@@ -1,24 +1,202 @@
-const { chromium }=require('playwright');const sharp=require('sharp');const fs=require('fs');const path=require('path');const {spawn}=require('child_process');
-const OUT=process.argv[2]||'/tmp/subway-stage56-controlled';fs.mkdirSync(OUT,{recursive:true});const sleep=ms=>new Promise(r=>setTimeout(r,ms));const KEYS={left:'ArrowLeft',right:'ArrowRight',jump:'ArrowUp',roll:'ArrowDown'};
-async function decode(png,w=64,h=36){const {data}=await sharp(png).resize(w,h,{fit:'fill'}).removeAlpha().raw().toBuffer({resolveWithObject:true});const gray=new Float32Array(w*h),rgb=new Float32Array(w*h*3);for(let i=0,p=0;i<gray.length;i++,p+=3){const r=data[p]/255,g=data[p+1]/255,b=data[p+2]/255;rgb[p]=r;rgb[p+1]=g;rgb[p+2]=b;gray[i]=.299*r+.587*g+.114*b}return{gray,rgb,w,h}}
-function meanAbs(a,b){let s=0;for(let i=0;i<a.length;i++)s+=Math.abs(a[i]-b[i]);return s/a.length}
-function isDeath(img){const{rgb,w,h}=img;let green=0,lower=0,orange=0,total=w*h;for(let y=0;y<h;y++)for(let x=0;x<w;x++){const p=(y*w+x)*3,r=rgb[p],g=rgb[p+1],b=rgb[p+2];if(y>=h*.5){lower++;if(g>r*1.12&&g>b*1.25&&g>.38)green++}if(r>.68&&g>.20&&g<.78&&b<.28)orange++}return green/Math.max(1,lower)>.48&&orange/total>.10}
-function laneDanger(gray,w,h,prev){const lanes=[[.12,.40],[.34,.66],[.60,.88]],y0=Math.floor(h*.38),y1=Math.floor(h*.90);return lanes.map(([xa,xb])=>{const x0=Math.floor(w*xa),x1=Math.floor(w*xb);let edge=0,temp=0,m=0,m2=0,c=0;for(let y=y0;y<y1-1;y++)for(let x=x0;x<x1-1;x++){const i=y*w+x,v=gray[i];edge+=Math.abs(v-gray[i+1])+Math.abs(v-gray[i+w]);if(prev)temp+=Math.abs(v-prev[i]);m+=v;m2+=v*v;c++}edge/=2*c;temp/=c;m/=c;m2/=c;return edge*1.15+temp*.75+Math.sqrt(Math.max(0,m2-m*m))*.12})}
-function choose(d,lane,step){
-  // Early low-speed calibration block: all five labels are deliberately represented.
-  const forced={0:'jump',2:'right',4:'jump',6:'left',8:'roll',10:'jump',12:'right',14:'left',16:'roll',18:'jump'};
-  if(step<20)return forced[step]||'stay';
-  // Afterwards retain the empirically robust jump-heavy survival behavior, but insert no-op observations.
-  if(step%2===1)return'stay';
-  if(step%24===8)return lane<2?'right':'left';
-  if(step%24===16)return lane>0?'left':'right';
-  return'jump';
+const { chromium } = require('playwright');
+const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+const OUT = process.argv[2] || '/tmp/subway-stage56-controlled';
+fs.mkdirSync(OUT, { recursive: true });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const KEYS = { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', roll: 'ArrowDown' };
+
+async function decode(png, w = 64, h = 36) {
+  const { data } = await sharp(png).resize(w, h, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const gray = new Float32Array(w * h), rgb = new Float32Array(w * h * 3);
+  for (let i = 0, p = 0; i < gray.length; i++, p += 3) {
+    const r = data[p] / 255, g = data[p + 1] / 255, b = data[p + 2] / 255;
+    rgb[p] = r; rgb[p + 1] = g; rgb[p + 2] = b;
+    gray[i] = .299 * r + .587 * g + .114 * b;
+  }
+  return { gray, rgb, w, h };
 }
-async function press(c,k){await c.press(k,{delay:28})}
-async function openGame(context){const page=await context.newPage();await page.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000});let game=null,canvas=null,deadline=Date.now()+100000;while(Date.now()<deadline){game=page.frames().filter(f=>f.url().includes('.gdn.poki.com')).pop()||null;if(game){const c=game.locator('#pixi-canvas');if(await c.count().catch(()=>0)){canvas=c;break}}await sleep(650)}if(!canvas)throw Error('official Pixi canvas not found');const exact=await game.evaluate(()=>{const c=document.createElement('canvas'),gl=c.getContext('webgl',{stencil:true,failIfMajorPerformanceCaveat:true});if(!gl)return{ok:false};const e=gl.getExtension('WEBGL_debug_renderer_info');return{ok:true,stencil:gl.getParameter(gl.STENCIL_BITS),renderer:e?gl.getParameter(e.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)}});if(!exact.ok)throw Error('strict WebGL gate failed');const box=await canvas.boundingBox();if(box)await canvas.click({position:{x:box.width/2,y:box.height/2},force:true});return{page,game,canvas,exact}}
-async function bootstrap(c){for(let r=0;r<7;r++)for(const k of['Space','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown']){await press(c,k);await sleep(310)}await press(c,'Space');await sleep(900)}
-async function ensureMoving(c){for(let tries=0;tries<12;tries++){const a=await decode(await c.screenshot());await sleep(500);const b=await decode(await c.screenshot());const motion=meanAbs(a.gray,b.gray);if(motion>.012&&!isDeath(b))return{ok:true,motion};for(const k of['Space','ArrowUp','ArrowLeft','ArrowRight','ArrowDown']){await press(c,k);await sleep(250)}}return{ok:false,motion:0}}
-function recorder(file){const d=process.env.DISPLAY;if(!d)throw Error('DISPLAY missing');return spawn('ffmpeg',['-y','-loglevel','warning','-f','x11grab','-draw_mouse','0','-framerate','30','-video_size','1280x720','-i',`${d}+0,0`,'-an','-c:v','libx264','-preset','ultrafast','-crf','22','-pix_fmt','yuv420p',file],{stdio:['pipe','inherit','inherit']})}
-async function stop(p){if(!p||p.exitCode!==null)return;p.stdin.write('q\n');await Promise.race([new Promise(r=>p.once('exit',r)),sleep(5000)]);if(p.exitCode===null)p.kill('SIGINT')}
-async function episode(c,attempt,maxSec=50){const file=path.join(OUT,`episode-${String(attempt).padStart(2,'0')}.mp4`),logFile=path.join(OUT,`episode-${String(attempt).padStart(2,'0')}-actions.json`),rec=recorder(file);await sleep(700);const t0=Date.now();let prev=null,lane=1,step=0,dead=false;const decisions=[];while((Date.now()-t0)/1000<maxSec){const png=await c.screenshot(),img=await decode(png);if(isDeath(img)){dead=true;break}const d=laneDanger(img.gray,img.w,img.h,prev),action=choose(d,lane,step),t=(Date.now()-t0)/1000;decisions.push({step,t_sec:+t.toFixed(4),action,lane_estimate:lane,pixel_danger:d.map(x=>+x.toFixed(5)),label_origin:'exact_browser_input'});if(action!=='stay')await press(c,KEYS[action]);if(action==='left')lane=Math.max(0,lane-1);else if(action==='right')lane=Math.min(2,lane+1);prev=img.gray;step++;await sleep(235)}const duration=(Date.now()-t0)/1000;await stop(rec);fs.writeFileSync(logFile,JSON.stringify({attempt,duration_sec:duration,death_detected:dead,decisions},null,2));return{attempt,file,logFile,duration,dead,decisions}}
-(async()=>{const browser=await chromium.launch({headless:false,args:['--autoplay-policy=no-user-gesture-required','--enable-webgl','--ignore-gpu-blocklist','--use-gl=angle','--use-angle=gl','--disable-dev-shm-usage','--no-sandbox','--window-size=1280,720']});const context=await browser.newContext({viewport:{width:1280,height:720},locale:'en-US'}),g=await openGame(context);fs.writeFileSync(path.join(OUT,'runtime.json'),JSON.stringify({url:g.game.url(),webgl:g.exact},null,2));await bootstrap(g.canvas);let mv=await ensureMoving(g.canvas);if(!mv.ok)throw Error('could not establish moving gameplay');const episodes=[];for(let a=1;a<=3;a++){mv=await ensureMoving(g.canvas);if(!mv.ok){await bootstrap(g.canvas);mv=await ensureMoving(g.canvas)}const ep=await episode(g.canvas,a,50);episodes.push(ep);const acts=new Set(ep.decisions.map(x=>x.action));if(ep.duration>=38&&!ep.dead&&['left','right','jump','roll','stay'].every(x=>acts.has(x)))break;await press(g.canvas,'Space');await sleep(900);await ensureMoving(g.canvas)}const valid=episodes.filter(e=>e.duration>=30&&['left','right','jump','roll','stay'].every(a=>e.decisions.some(x=>x.action===a)));const best=valid.sort((a,b)=>b.duration-a.duration)[0];if(!best)throw Error('no >=30s continuous episode with all action classes');fs.copyFileSync(best.file,path.join(OUT,'official_live_controlled_2026.mp4'));fs.copyFileSync(best.logFile,path.join(OUT,'exact_actions.json'));const counts=Object.fromEntries(['stay','left','right','jump','roll'].map(a=>[a,best.decisions.filter(x=>x.action===a).length]));const summary={stage:'5-controlled-official-game-source-v2',source_id:'official_live_controlled_2026',dataset_role:'exact_action_calibration',not_expert_imitation:true,selected_attempt:best.attempt,duration_sec:+best.duration.toFixed(3),death_detected:best.dead,decision_count:best.decisions.length,action_counts:counts,webgl:g.exact};fs.writeFileSync(path.join(OUT,'collector_summary.json'),JSON.stringify(summary,null,2));console.log(JSON.stringify(summary,null,2));await context.close();await browser.close()})().catch(e=>{fs.writeFileSync(path.join(OUT,'fatal.txt'),String(e.stack||e));console.error(e);process.exit(1)});
+function meanAbs(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; }
+function isDeath(img) {
+  const { rgb, w, h } = img; let green = 0, lower = 0, orange = 0, total = w * h;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const p = (y * w + x) * 3, r = rgb[p], g = rgb[p + 1], b = rgb[p + 2];
+    if (y >= h * .5) { lower++; if (g > r * 1.12 && g > b * 1.25 && g > .38) green++; }
+    if (r > .68 && g > .20 && g < .78 && b < .28) orange++;
+  }
+  return green / Math.max(1, lower) > .48 && orange / total > .10;
+}
+function laneDanger(gray, w, h, prev) {
+  const lanes = [[.12, .40], [.34, .66], [.60, .88]], y0 = Math.floor(h * .38), y1 = Math.floor(h * .90);
+  return lanes.map(([xa, xb]) => {
+    const x0 = Math.floor(w * xa), x1 = Math.floor(w * xb); let edge = 0, temp = 0, m = 0, m2 = 0, c = 0;
+    for (let y = y0; y < y1 - 1; y++) for (let x = x0; x < x1 - 1; x++) {
+      const i = y * w + x, v = gray[i]; edge += Math.abs(v - gray[i + 1]) + Math.abs(v - gray[i + w]);
+      if (prev) temp += Math.abs(v - prev[i]); m += v; m2 += v * v; c++;
+    }
+    edge /= 2 * c; temp /= c; m /= c; m2 /= c;
+    return edge * 1.15 + temp * .75 + Math.sqrt(Math.max(0, m2 - m * m)) * .12;
+  });
+}
+
+function chooseAction(d, lane, step) {
+  // Low-speed exact-label coverage block. Each of the five action classes appears repeatedly.
+  const forced = {
+    0: 'jump', 2: 'right', 4: 'stay', 6: 'left', 8: 'roll',
+    10: 'stay', 12: 'jump', 14: 'right', 16: 'stay', 18: 'left',
+    20: 'roll', 22: 'stay', 24: 'jump'
+  };
+  if (step <= 24) return forced[step] || 'stay';
+  // Proven survival-biased behavior, with deliberate no-op observations and sparse lateral corrections.
+  if (step % 2 === 1) return 'stay';
+  if (step % 28 === 8) return lane < 2 ? 'right' : 'left';
+  if (step % 28 === 20) return lane > 0 ? 'left' : 'right';
+  return 'jump';
+}
+
+async function key(page, k) { await page.keyboard.press(k, { delay: 30 }); }
+async function focusCanvas(canvas) {
+  const box = await canvas.boundingBox();
+  if (box) await canvas.click({ position: { x: box.width / 2, y: box.height / 2 }, force: true }).catch(() => {});
+}
+
+async function openGame(context) {
+  const page = await context.newPage();
+  page.on('console', m => fs.appendFileSync(path.join(OUT, 'console.log'), `[${m.type()}] ${m.text()}\n`));
+  page.on('pageerror', e => fs.appendFileSync(path.join(OUT, 'pageerror.log'), String(e) + '\n'));
+  await page.goto('https://poki.com/en/g/subway-surfers', { waitUntil: 'domcontentloaded', timeout: 120000 });
+  let game = null, canvas = null, deadline = Date.now() + 100000;
+  while (Date.now() < deadline) {
+    game = page.frames().filter(f => f.url().includes('.gdn.poki.com')).pop() || null;
+    if (game) {
+      const c = game.locator('#pixi-canvas');
+      if (await c.count().catch(() => 0)) { canvas = c; break; }
+    }
+    await sleep(650);
+  }
+  if (!canvas) throw Error('official Pixi canvas not found');
+  const exact = await game.evaluate(() => {
+    const c = document.createElement('canvas'), gl = c.getContext('webgl', { stencil: true, failIfMajorPerformanceCaveat: true });
+    if (!gl) return { ok: false };
+    const e = gl.getExtension('WEBGL_debug_renderer_info');
+    return { ok: true, stencil: gl.getParameter(gl.STENCIL_BITS), renderer: e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) };
+  });
+  if (!exact.ok) throw Error('strict WebGL gate failed');
+  await focusCanvas(canvas);
+  return { page, game, canvas, exact };
+}
+
+async function sampleActivity(canvas, samples = 8, spacingMs = 220) {
+  const frames = [], deathFlags = [];
+  for (let i = 0; i < samples; i++) {
+    const img = await decode(await canvas.screenshot()); frames.push(img.gray); deathFlags.push(isDeath(img));
+    if (i + 1 < samples) await sleep(spacingMs);
+  }
+  const diffs = [];
+  for (let i = 1; i < frames.length; i++) diffs.push(meanAbs(frames[i - 1], frames[i]));
+  const sorted = diffs.slice().sort((a, b) => a - b);
+  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+  const activePairs = diffs.filter(x => x > .0045).length;
+  const strongPairs = diffs.filter(x => x > .010).length;
+  return {
+    ok: !deathFlags[deathFlags.length - 1] && (median > .0030 || activePairs >= 3 || strongPairs >= 2),
+    medianMotion: +median.toFixed(6), activePairs, strongPairs, diffs: diffs.map(x => +x.toFixed(6)),
+    deathAtEnd: deathFlags[deathFlags.length - 1]
+  };
+}
+
+async function hardenStartup(page, canvas) {
+  const diagnostics = [];
+  const sequences = [
+    ['Space', 'Enter', 'Space', 'ArrowUp'],
+    ['Enter', 'Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp'],
+    ['Space', 'ArrowUp', 'Space', 'ArrowDown'],
+    ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'Space'],
+    ['Enter', 'Space', 'ArrowUp', 'ArrowDown', 'Space']
+  ];
+  for (let round = 0; round < 10; round++) {
+    await focusCanvas(canvas);
+    const before = await sampleActivity(canvas, 6, 180);
+    diagnostics.push({ round, phase: 'before', ...before });
+    if (before.ok) { fs.writeFileSync(path.join(OUT, 'startup-diagnostics.json'), JSON.stringify(diagnostics, null, 2)); return before; }
+
+    if (before.deathAtEnd) {
+      for (const k of ['Space', 'Enter', 'Space']) { await key(page, k); await sleep(450); }
+    } else {
+      const seq = sequences[round % sequences.length];
+      for (const k of seq) { await key(page, k); await sleep(320); }
+      await focusCanvas(canvas);
+      await sleep(700);
+    }
+
+    const after = await sampleActivity(canvas, 8, 220);
+    diagnostics.push({ round, phase: 'after', ...after });
+    if (after.ok) { fs.writeFileSync(path.join(OUT, 'startup-diagnostics.json'), JSON.stringify(diagnostics, null, 2)); return after; }
+  }
+  fs.writeFileSync(path.join(OUT, 'startup-diagnostics.json'), JSON.stringify(diagnostics, null, 2));
+  return { ok: false };
+}
+
+function recorder(file) {
+  const d = process.env.DISPLAY; if (!d) throw Error('DISPLAY missing');
+  return spawn('ffmpeg', ['-y', '-loglevel', 'warning', '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '30', '-video_size', '1280x720', '-i', `${d}+0,0`, '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-pix_fmt', 'yuv420p', file], { stdio: ['pipe', 'inherit', 'inherit'] });
+}
+async function stopRecorder(p) {
+  if (!p || p.exitCode !== null) return; p.stdin.write('q\n');
+  await Promise.race([new Promise(r => p.once('exit', r)), sleep(5000)]);
+  if (p.exitCode === null) p.kill('SIGINT');
+}
+
+async function episode(page, canvas, attempt, maxSec = 50) {
+  const file = path.join(OUT, `episode-${String(attempt).padStart(2, '0')}.mp4`);
+  const logFile = path.join(OUT, `episode-${String(attempt).padStart(2, '0')}-actions.json`);
+  const rec = recorder(file); await sleep(700); const t0 = Date.now();
+  let prev = null, lane = 1, step = 0, dead = false; const decisions = [];
+  while ((Date.now() - t0) / 1000 < maxSec) {
+    const png = await canvas.screenshot(), img = await decode(png);
+    if (isDeath(img)) { dead = true; break; }
+    const d = laneDanger(img.gray, img.w, img.h, prev), action = chooseAction(d, lane, step), t = (Date.now() - t0) / 1000;
+    decisions.push({ step, t_sec: +t.toFixed(4), action, lane_estimate: lane, pixel_danger: d.map(x => +x.toFixed(5)), label_origin: 'exact_browser_input' });
+    if (action !== 'stay') await key(page, KEYS[action]);
+    if (action === 'left') lane = Math.max(0, lane - 1); else if (action === 'right') lane = Math.min(2, lane + 1);
+    prev = img.gray; step++; await sleep(235);
+  }
+  const duration = (Date.now() - t0) / 1000; await stopRecorder(rec);
+  fs.writeFileSync(logFile, JSON.stringify({ attempt, duration_sec: duration, death_detected: dead, decisions }, null, 2));
+  return { attempt, file, logFile, duration, dead, decisions };
+}
+
+(async () => {
+  const browser = await chromium.launch({ headless: false, args: ['--autoplay-policy=no-user-gesture-required', '--enable-webgl', '--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=gl', '--disable-dev-shm-usage', '--no-sandbox', '--window-size=1280,720'] });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, locale: 'en-US' });
+  const g = await openGame(context);
+  fs.writeFileSync(path.join(OUT, 'runtime.json'), JSON.stringify({ url: g.game.url(), webgl: g.exact }, null, 2));
+
+  const start = await hardenStartup(g.page, g.canvas);
+  if (!start.ok) throw Error('hardened startup detector could not establish sustained gameplay');
+
+  const episodes = [];
+  for (let a = 1; a <= 4; a++) {
+    const ready = await hardenStartup(g.page, g.canvas);
+    if (!ready.ok) continue;
+    const ep = await episode(g.page, g.canvas, a, 50); episodes.push(ep);
+    const acts = new Set(ep.decisions.map(x => x.action));
+    if (ep.duration >= 38 && ['left', 'right', 'jump', 'roll', 'stay'].every(x => acts.has(x))) break;
+    for (const k of ['Space', 'Enter', 'Space']) { await key(g.page, k); await sleep(500); }
+  }
+
+  const valid = episodes.filter(e => e.duration >= 30 && ['left', 'right', 'jump', 'roll', 'stay'].every(a => e.decisions.some(x => x.action === a)));
+  const best = valid.sort((a, b) => b.duration - a.duration)[0];
+  if (!best) throw Error(`no >=30s continuous episode with all five action classes; attempts=${episodes.map(e => `${e.attempt}:${e.duration.toFixed(1)}s`).join(',')}`);
+
+  fs.copyFileSync(best.file, path.join(OUT, 'official_live_controlled_2026.mp4'));
+  fs.copyFileSync(best.logFile, path.join(OUT, 'exact_actions.json'));
+  const counts = Object.fromEntries(['stay', 'left', 'right', 'jump', 'roll'].map(a => [a, best.decisions.filter(x => x.action === a).length]));
+  const summary = { stage: '5-controlled-official-game-source-v3', source_id: 'official_live_controlled_2026', dataset_role: 'exact_action_calibration', not_expert_imitation: true, selected_attempt: best.attempt, duration_sec: +best.duration.toFixed(3), death_detected: best.dead, decision_count: best.decisions.length, action_counts: counts, startup_detector: start, webgl: g.exact };
+  fs.writeFileSync(path.join(OUT, 'collector_summary.json'), JSON.stringify(summary, null, 2));
+  console.log(JSON.stringify(summary, null, 2));
+  await context.close(); await browser.close();
+})().catch(e => { fs.writeFileSync(path.join(OUT, 'fatal.txt'), String(e.stack || e)); console.error(e); process.exit(1); });
