@@ -12,21 +12,44 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch public runtime bootstrap files
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Fetch bootstrap from game origin
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/subway-source
-          BASE='https://5dd312fa-015f-11ea-ad56-9cb6d0d995f7.gdn.poki.com/b05f1bb8-3159-4c02-8066-4dc1327308e0'
-          for f in index.html js/boot.js js/loading.js; do
-            mkdir -p "/tmp/subway-source/$(dirname "$f")"
-            curl -fL --retry 3 "$BASE/$f" -o "/tmp/subway-source/$f"
-          done
-          grep -RniE 'webgl|WEBGL|gpu|renderer|extension|canvas|getContext|support' /tmp/subway-source > /tmp/subway-source/relevant.txt || true
+          mkdir -p /tmp/subway-source/js
+          cat > source-probe.js <<'JS'
+          const { chromium }=require('playwright'); const fs=require('fs');
+          (async()=>{
+            const b=await chromium.launch({headless:true});
+            const c=await b.newContext({viewport:{width:1280,height:720}}); const p=await c.newPage();
+            await p.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000});
+            await p.waitForTimeout(12000);
+            const frames=p.frames(); const g=frames.filter(f=>f.url().includes('.gdn.poki.com')).pop();
+            if(!g) throw new Error('game frame not found');
+            fs.writeFileSync('/tmp/subway-source/game-url.txt',g.url());
+            for(const path of ['js/boot.js','js/loading.js']){
+              const result=await g.evaluate(async path=>{const r=await fetch(path,{credentials:'same-origin'}); return {status:r.status,text:await r.text()}},path);
+              fs.writeFileSync('/tmp/subway-source/'+path,result.text); console.log(path,result.status,result.text.length);
+            }
+            fs.writeFileSync('/tmp/subway-source/index.html',await g.content());
+            await b.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+          node source-probe.js
+          grep -RniE 'webgl|WEBGL|gpu|renderer|extension|canvas|getContext|support|mobile|platform' /tmp/subway-source > /tmp/subway-source/relevant.txt || true
           cat /tmp/subway-source/relevant.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: subway-surfers-runtime-source-probe
           path: /tmp/subway-source
