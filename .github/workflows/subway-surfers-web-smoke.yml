@@ -18,100 +18,78 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install browser runtime
+      - name: Install headed browser runtime
         run: |
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0
           npx playwright install --with-deps chromium
-          sudo apt-get install -y ffmpeg
-      - name: Inspect and control official Subway Surfers runtime
+          sudo apt-get install -y ffmpeg mesa-utils
+      - name: Run official Subway Surfers with WebGL
         continue-on-error: true
         run: |
           set -uxo pipefail
-          mkdir -p /tmp/subway-web/iframe /tmp/subway-web/direct
+          rm -rf /tmp/subway-web && mkdir -p /tmp/subway-web/game
           cat > subway-web-run.js <<'JS'
           const { chromium } = require('playwright');
-          const fs = require('fs');
-          const OUT='/tmp/subway-web';
-          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          async function domSummary(frame){
-            return await frame.evaluate(()=>{
-              const tags={};
-              const els=[...document.querySelectorAll('*')].map((e,i)=>{
-                tags[e.tagName]=(tags[e.tagName]||0)+1;
-                const r=e.getBoundingClientRect();
-                return {i,tag:e.tagName,id:e.id||'',cls:String(e.className||'').slice(0,180),
-                  text:(e.innerText||'').replace(/\s+/g,' ').slice(0,180),
-                  x:r.x,y:r.y,w:r.width,h:r.height,area:Math.max(0,r.width*r.height)};
-              }).filter(x=>x.area>100).sort((a,b)=>b.area-a.area).slice(0,80);
-              return {url:location.href,title:document.title,readyState:document.readyState,
-                bodyText:(document.body?.innerText||'').replace(/\s+/g,' ').slice(0,4000),tags,large:els,
-                bodyHTML:(document.body?.innerHTML||'').slice(0,12000)};
-            });
-          }
-          async function safe(name,fn){ try{return await fn()}catch(e){fs.appendFileSync(`${OUT}/errors.log`,`${name}: ${e.stack||e}\n`);return null;} }
+          const fs=require('fs');
+          const OUT='/tmp/subway-web'; const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function safe(name,fn){try{return await fn()}catch(e){fs.appendFileSync(`${OUT}/errors.log`,`${name}: ${e.stack||e}\n`);return null}}
+          async function webglInfo(frame){return frame.evaluate(()=>{
+            const c=document.createElement('canvas');
+            const gl=c.getContext('webgl2')||c.getContext('webgl');
+            if(!gl)return {ok:false};
+            const ext=gl.getExtension('WEBGL_debug_renderer_info');
+            return {ok:true,version:gl.getParameter(gl.VERSION),vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):gl.getParameter(gl.VENDOR),renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)};
+          })}
           (async()=>{
-            const browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--use-gl=swiftshader']});
-            const context=await browser.newContext({viewport:{width:1280,height:720},locale:'en-US'});
+            const browser=await chromium.launch({headless:false,args:[
+              '--autoplay-policy=no-user-gesture-required','--enable-webgl','--ignore-gpu-blocklist',
+              '--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader-webgl',
+              '--disable-dev-shm-usage','--no-sandbox'
+            ]});
+            const context=await browser.newContext({viewport:{width:1280,height:720},locale:'en-US',recordVideo:{dir:`${OUT}/video`,size:{width:1280,height:720}}});
             const page=await context.newPage();
-            page.on('console',m=>fs.appendFileSync(`${OUT}/console.log`,`[main:${m.type()}] ${m.text()}\n`));
+            page.on('console',m=>fs.appendFileSync(`${OUT}/console.log`,`[${m.type()}] ${m.text()}\n`));
             page.on('pageerror',e=>fs.appendFileSync(`${OUT}/pageerror.log`,String(e)+'\n'));
+            fs.writeFileSync(`${OUT}/top-webgl.json`,JSON.stringify(await webglInfo(page),null,2));
             await page.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000});
-            await sleep(15000);
-            await safe('main-screenshot',()=>page.screenshot({path:`${OUT}/main.png`}));
+            await sleep(18000);
             const frames=page.frames();
-            const fm=frames.map((f,i)=>({i,url:f.url(),name:f.name()}));
-            fs.writeFileSync(`${OUT}/frames.json`,JSON.stringify(fm,null,2));
-            const gdn=frames.filter(f=>f.url().includes('.gdn.poki.com'));
-            const game=gdn[gdn.length-1] || frames[frames.length-1];
-            fs.writeFileSync(`${OUT}/selected-game-url.txt`,game.url());
-            const summary=await safe('iframe-dom-summary',()=>domSummary(game));
-            if(summary) fs.writeFileSync(`${OUT}/iframe/dom-summary.json`,JSON.stringify(summary,null,2));
-            await safe('iframe-html',async()=>fs.writeFileSync(`${OUT}/iframe/game.html`,await game.content()));
-            await safe('outer-gameframe-screenshot',async()=>{
-              const gf=page.locator('iframe[name="gameFrame"]');
-              if(await gf.count()) await gf.first().screenshot({path:`${OUT}/iframe/outer-gameframe.png`});
-            });
-            await safe('iframe-body-before',()=>game.locator('body').screenshot({path:`${OUT}/iframe/00-before.png`}));
-            // Focus and control the actual nested frame, not Poki navigation chrome.
-            await safe('iframe-focus',()=>game.evaluate(()=>{document.body.tabIndex=0;document.body.focus();}));
-            await safe('iframe-click',async()=>{
-              const b=await game.locator('body').boundingBox();
-              if(b) await game.locator('body').click({position:{x:Math.max(2,b.width/2),y:Math.max(2,b.height/2)},force:true});
-            });
-            for(const key of ['Enter','ArrowUp','Space']){await safe('iframe-start-'+key,()=>game.locator('body').press(key));await sleep(1200)}
-            await safe('iframe-body-started',()=>game.locator('body').screenshot({path:`${OUT}/iframe/01-started.png`}));
-            const seq=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','ArrowRight','ArrowUp','ArrowLeft','ArrowDown'];
-            let si=2;
-            for(const key of seq){await safe('iframe-key-'+key,()=>game.locator('body').press(key));await sleep(800);await safe('iframe-shot-'+si,()=>game.locator('body').screenshot({path:`${OUT}/iframe/${String(si++).padStart(2,'0')}-${key}.png`}));}
-
-            // Also try the discovered official runtime as its own top-level Linux page.
-            const dctx=await browser.newContext({viewport:{width:1280,height:720},locale:'en-US',recordVideo:{dir:`${OUT}/direct/video`,size:{width:1280,height:720}}});
-            const direct=await dctx.newPage();
-            direct.on('console',m=>fs.appendFileSync(`${OUT}/direct/console.log`,`[${m.type()}] ${m.text()}\n`));
-            direct.on('pageerror',e=>fs.appendFileSync(`${OUT}/direct/pageerror.log`,String(e)+'\n'));
-            await safe('direct-goto',()=>direct.goto(game.url(),{waitUntil:'domcontentloaded',timeout:120000,referer:'https://poki.com/en/g/subway-surfers'}));
-            await sleep(12000);
-            const dsum=await safe('direct-summary',()=>domSummary(direct));
-            if(dsum) fs.writeFileSync(`${OUT}/direct/dom-summary.json`,JSON.stringify(dsum,null,2));
-            await safe('direct-before',()=>direct.screenshot({path:`${OUT}/direct/00-before.png`}));
-            await safe('direct-focus',()=>direct.evaluate(()=>{document.body.tabIndex=0;document.body.focus();}));
-            await safe('direct-click',()=>direct.mouse.click(640,360));
-            for(const key of ['Enter','ArrowUp','Space']){await safe('direct-start-'+key,()=>direct.keyboard.press(key));await sleep(1200)}
-            await safe('direct-started',()=>direct.screenshot({path:`${OUT}/direct/01-started.png`}));
-            let di=2;
-            for(const key of seq){await safe('direct-key-'+key,()=>direct.keyboard.press(key));await sleep(800);await safe('direct-shot-'+di,()=>direct.screenshot({path:`${OUT}/direct/${String(di++).padStart(2,'0')}-${key}.png`}));}
-            await sleep(4000);
-            await safe('direct-final',()=>direct.screenshot({path:`${OUT}/direct/99-final.png`}));
-            const v=direct.video();
-            await direct.close(); await dctx.close();
-            if(v){const p=await v.path();fs.writeFileSync(`${OUT}/direct/video-path.txt`,p);fs.copyFileSync(p,`${OUT}/official-subway-surfers-direct.webm`);}
-            await page.close(); await context.close(); await browser.close();
+            fs.writeFileSync(`${OUT}/frames.json`,JSON.stringify(frames.map((f,i)=>({i,name:f.name(),url:f.url()})),null,2));
+            const candidates=frames.filter(f=>f.url().includes('.gdn.poki.com'));
+            const game=candidates[candidates.length-1]||frames[frames.length-1];
+            fs.writeFileSync(`${OUT}/game-url.txt`,game.url());
+            fs.writeFileSync(`${OUT}/game-webgl.json`,JSON.stringify(await webglInfo(game),null,2));
+            const state=await game.evaluate(()=>({title:document.title,text:(document.body?.innerText||'').slice(0,2000),canvasCount:document.querySelectorAll('canvas').length,html:(document.body?.innerHTML||'').slice(0,8000)}));
+            fs.writeFileSync(`${OUT}/game-state.json`,JSON.stringify(state,null,2));
+            await safe('body-before',()=>game.locator('body').screenshot({path:`${OUT}/game/00-before.png`}));
+            const canvas=game.locator('canvas').first();
+            if(await canvas.count()){
+              await safe('canvas-click',()=>canvas.click({position:{x:400,y:280},force:true}));
+            } else {
+              await safe('body-click',async()=>{const b=await game.locator('body').boundingBox();if(b)await game.locator('body').click({position:{x:b.width/2,y:b.height/2},force:true})});
+            }
+            await sleep(700);
+            // Start/menu attempts, then real desktop movement controls.
+            for(const key of ['Enter','Space','ArrowUp']){await safe('start-'+key,()=>game.locator('body').press(key));await sleep(1300)}
+            await safe('started-shot',()=>game.locator('body').screenshot({path:`${OUT}/game/01-started.png`}));
+            const seq=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','ArrowLeft','ArrowUp','ArrowRight','ArrowDown','ArrowRight','ArrowUp','ArrowLeft','ArrowUp'];
+            let i=2;
+            for(const key of seq){
+              await safe('key-'+key,()=>game.locator('body').press(key)); await sleep(800);
+              await safe('shot-'+i,()=>game.locator('body').screenshot({path:`${OUT}/game/${String(i++).padStart(2,'0')}-${key}.png`}));
+            }
+            await sleep(5000); await safe('final-shot',()=>game.locator('body').screenshot({path:`${OUT}/game/99-final.png`}));
+            const final=await game.evaluate(()=>({text:(document.body?.innerText||'').slice(0,2000),canvasCount:document.querySelectorAll('canvas').length}));
+            fs.writeFileSync(`${OUT}/game-final-state.json`,JSON.stringify(final,null,2));
+            const v=page.video(); await page.close(); await context.close();
+            if(v){const p=await v.path();fs.copyFileSync(p,`${OUT}/official-subway-surfers-headed.webm`)}
+            await browser.close();
           })().catch(e=>{fs.writeFileSync(`${OUT}/fatal.txt`,String(e.stack||e));process.exitCode=1});
           JS
-          node subway-web-run.js
-          if [ -f /tmp/subway-web/official-subway-surfers-direct.webm ]; then
-            ffmpeg -y -loglevel warning -i /tmp/subway-web/official-subway-surfers-direct.webm -c:v libx264 -pix_fmt yuv420p /tmp/subway-web/official-subway-surfers-direct.mp4 || true
+          xvfb-run -a -s '-screen 0 1280x720x24' node subway-web-run.js
+          if [ -f /tmp/subway-web/official-subway-surfers-headed.webm ]; then
+            ffmpeg -y -loglevel warning -i /tmp/subway-web/official-subway-surfers-headed.webm -c:v libx264 -pix_fmt yuv420p /tmp/subway-web/official-subway-surfers-headed.mp4 || true
           fi
           find /tmp/subway-web -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
       - uses: actions/upload-artifact@v4
