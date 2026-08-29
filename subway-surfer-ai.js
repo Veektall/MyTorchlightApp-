@@ -93,33 +93,29 @@ async function main(){
   if(!canvas) throw new Error('official Subway Surfers canvas not found');
   const exact=await game.evaluate(()=>{const c=document.createElement('canvas');const gl=c.getContext('webgl',{stencil:true,failIfMajorPerformanceCaveat:true});return {ok:!!gl,attrs:gl?gl.getContextAttributes():null};});
   if(!exact.ok)throw new Error('native exact WebGL gate failed '+JSON.stringify(exact));
-  fs.writeFileSync(`${OUT}/runtime.json`,JSON.stringify({url:game.url(),exact,inputRouting:'nested-frame-body'},null,2));
+  fs.writeFileSync(`${OUT}/runtime.json`,JSON.stringify({url:game.url(),exact,inputRouting:'focused-pixi-canvas-press'},null,2));
 
-  const gameBody=game.locator('body');
   const sendKey=async key=>{
-    await gameBody.focus();
-    await gameBody.press(key,{delay:120});
+    await canvas.evaluate(el=>{el.tabIndex=0;el.focus()});
+    await canvas.press(key,{delay:180});
   };
 
   const box=await canvas.boundingBox();
   if(box) await canvas.click({position:{x:box.width/2,y:box.height/2},force:true});
-  await gameBody.focus();
   await sendKey('Space');
   await sleep(3500);
   fs.writeFileSync(`${OUT}/frames/tutorial-before.png`,await canvas.screenshot());
 
-  // One-time tutorial bootstrap. Controls are sent directly to the nested SYBO frame;
-  // cycling is safe because only the currently requested tutorial action advances it.
   const tutorial=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
-  for(let cycle=0;cycle<4;cycle++) {
-    for(const key of tutorial){await sendKey(key);await sleep(2200);}
+  for(let cycle=0;cycle<3;cycle++) {
+    for(const key of tutorial){await sendKey(key);await sleep(1600);}
   }
-  await sleep(3000);
+  await sleep(4000);
   fs.writeFileSync(`${OUT}/frames/tutorial-after.png`,await canvas.screenshot());
 
   const log=[];
   const state={lane:0,stepsSinceJump:99,prevSig:null,stagnant:0};
-  for(let step=0;step<36;step++){
+  for(let step=0;step<48;step++){
     const buf=await canvas.screenshot();
     if(step%4===0)fs.writeFileSync(`${OUT}/frames/${String(step).padStart(2,'0')}.png`,buf);
     const f=frameFeatures(buf);
@@ -143,7 +139,7 @@ async function main(){
     }
     log.push({step,t:Date.now(),motion,lane:state.lane,lanes:f.lanes,decision});
     state.stepsSinceJump++;
-    await sleep(1250);
+    await sleep(1100);
   }
   const final=await canvas.screenshot(); fs.writeFileSync(`${OUT}/frames/99-final.png`,final);
   fs.writeFileSync(`${OUT}/decisions.json`,JSON.stringify(log,null,2));
