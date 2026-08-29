@@ -26,7 +26,7 @@ def main():
     a=ap.parse_args();p=Path(a.video);out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
     rows=list(csv.DictReader(open(a.manifest)));row=next(r for r in rows if r['source_id']==a.source_id)
     cap=cv2.VideoCapture(str(p));fps=float(cap.get(cv2.CAP_PROP_FPS) or 0);n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0);w=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH));h=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT));dur=n/fps if fps>0 else 0
-    # Cut detection must compare nearby frames. Half-second sampling falsely labels normal fast runner motion as edits.
+    # Compare nearby frames: half-second sampling produced false cuts in high-speed runner footage.
     step=max(1,int(round(max(fps,1)/10.0)));idx=0;prev_g=None;prev_hist=None;samples=[];frozen=[];freeze_start=None
     while True:
         ok,bgr=cap.read()
@@ -44,12 +44,20 @@ def main():
     cap.release()
     if freeze_start is not None and dur-freeze_start>=2:frozen.append([round(freeze_start,3),round(dur,3)])
     mads=np.array([x[1] for x in samples],float);med=float(np.median(mads)) if len(mads) else 0;rob=float(1.4826*np.median(np.abs(mads-med))) if len(mads) else 0
-    # A true edit is a large outlier in close-frame pixel change AND near-total color-histogram discontinuity.
     cut_threshold=max(42.0,med+7.0*max(rob,1.0));raw_cuts=[t for t,mad,corr in samples if mad>cut_threshold and corr<0.10];cuts=group_times(raw_cuts)
     actual=sha256(p);expected=(a.expected_sha256 or row.get('expected_sha256','')).strip().lower();reuse_ok=row.get('reuse_status','').lower() in {'uploader_explicit_free_to_use','explicit_creative_commons_claim','explicit_cc_attribution_claim','self_generated_official_game'}
-    checks={'hash_match':(not expected) or actual==expected,'duration_ge_30s':dur>=30,'short_side_ge_480':min(w,h)>=480,'fps_ge_24':fps>=24,'motion_present':med>1.2,'hard_cut_rate_le_3_per_min':(len(cuts)/max(dur/60,1e-6))<=3.0,'no_long_freeze':len(frozen)==0,'reuse_verified':reuse_ok}
+    checks={
+      'hash_match':(not expected) or actual==expected,
+      'duration_ge_30s':dur>=30.0,
+      'resolution_at_least_1280x720':w>=1280 and h>=720,
+      'fps_is_30ish':29.5<=fps<=30.5,
+      'motion_present':med>1.2,
+      'hard_cut_rate_le_3_per_min':(len(cuts)/max(dur/60,1e-6))<=3.0,
+      'no_long_freeze':len(frozen)==0,
+      'reuse_verified':reuse_ok,
+    }
     eligible=all(checks.values())
-    report={'stage':'5-continuous-source-validation-v2','source_id':a.source_id,'video':str(p),'sha256':actual,'expected_sha256':expected or None,'duration_sec':round(dur,3),'width':w,'height':h,'fps':round(fps,3),'sample_interval_sec':round(step/max(fps,1),4),'median_near_frame_mad':round(med,3),'robust_mad_scale':round(rob,3),'cut_mad_threshold':round(cut_threshold,3),'hard_cut_times_sec':cuts,'hard_cuts_per_min':round(len(cuts)/max(dur/60,1e-6),3),'freeze_intervals_sec':frozen,'checks':checks,'training_eligible':eligible,'dataset_role':row.get('category')}
+    report={'stage':'5-continuous-source-validation-v3','source_id':a.source_id,'video':str(p),'sha256':actual,'expected_sha256':expected or None,'duration_sec':round(dur,3),'width':w,'height':h,'fps':round(fps,3),'sample_interval_sec':round(step/max(fps,1),4),'median_near_frame_mad':round(med,3),'robust_mad_scale':round(rob,3),'cut_mad_threshold':round(cut_threshold,3),'hard_cut_times_sec':cuts,'hard_cuts_per_min':round(len(cuts)/max(dur/60,1e-6),3),'freeze_intervals_sec':frozen,'checks':checks,'training_eligible':eligible,'dataset_role':row.get('category')}
     (out/'stage5_source_report.json').write_text(json.dumps(report,indent=2))
     fields=list(rows[0].keys())
     with open(out/'stage5_promoted_manifest.csv','w',newline='') as f:
