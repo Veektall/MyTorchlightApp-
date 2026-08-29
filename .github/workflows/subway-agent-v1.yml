@@ -1,0 +1,47 @@
+name: Subway Surfers Learned Danger Agent v1
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'subway-agent-v1.js'
+      - 'subway-agent-v1-trigger.txt'
+      - '.github/workflows/subway-agent-v1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install clean Linux game runtime
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 sharp@0.34.3
+          npx playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y mesa-utils libgl1-mesa-dri ffmpeg
+      - name: Collect only active frames learn danger and play
+        run: |
+          rm -rf /tmp/subway-agent-v1
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' node subway-agent-v1.js
+          if [ -f /tmp/subway-agent-v1/learned-danger-policy.webm ]; then
+            ffmpeg -y -loglevel warning -i /tmp/subway-agent-v1/learned-danger-policy.webm -c:v libx264 -pix_fmt yuv420p /tmp/subway-agent-v1/learned-danger-policy.mp4 || true
+          fi
+          cat /tmp/subway-agent-v1/summary.json
+          find /tmp/subway-agent-v1 -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-surfers-learned-danger-agent-v1
+          path: /tmp/subway-agent-v1
+          retention-days: 2
+          if-no-files-found: error
