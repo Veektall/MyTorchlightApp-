@@ -6,7 +6,6 @@ on:
     paths:
       - 'subway_ai/data/video_manifest.csv'
       - 'subway_ai/scripts/prepare_video_corpus.py'
-      - 'subway_ai/scripts/capture_youtube_media.js'
       - 'subway_ai/video-corpus-trigger.txt'
       - '.github/workflows/subway-video-corpus.yml'
 
@@ -16,37 +15,36 @@ permissions:
 jobs:
   build-corpus:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - name: Install corpus tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg curl
           python -m pip install --upgrade pip
           pip install 'yt-dlp>=2025.8.22' numpy pillow
-          npm init -y >/dev/null 2>&1
-          npm install playwright@1.55.0
-          npx playwright install --with-deps chromium
-      - name: Browser-capture one approved Creative Commons source
+      - name: Acquire one approved direct-media pilot
         run: |
           set -euxo pipefail
           rm -rf /tmp/subway-video-corpus
           mkdir -p /tmp/subway-video-corpus/raw
           python - <<'PY' > /tmp/approved.tsv
           import csv
-          rows=[r for r in csv.DictReader(open('subway_ai/data/video_manifest.csv')) if r['auto_ingest'].lower()=='yes']
-          for r in rows[:1]: print(r['source_id']+'\t'+r['url'])
+          rows=[r for r in csv.DictReader(open('subway_ai/data/video_manifest.csv')) if r['auto_ingest'].lower()=='yes' and r.get('direct_media_url')]
+          if not rows:
+              raise SystemExit('no approved direct-media source in manifest')
+          r=rows[0]
+          print(r['source_id']+'\t'+r['direct_media_url'])
           PY
-          IFS=$'\t' read -r SID URL < /tmp/approved.tsv
-          node subway_ai/scripts/capture_youtube_media.js "$URL" "/tmp/subway-video-corpus/raw/${SID}.webm" 30
-          ffprobe -v error -show_entries format=duration:stream=width,height -of json "/tmp/subway-video-corpus/raw/${SID}.webm"
+          IFS=$'\t' read -r SID MEDIA_URL < /tmp/approved.tsv
+          curl --fail --location --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 120 \
+            -A 'Mozilla/5.0' "$MEDIA_URL" -o "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          test -s "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          ffprobe -v error -show_entries format=duration:stream=width,height,avg_frame_rate -of json "/tmp/subway-video-corpus/raw/${SID}.mp4"
       - name: Build canonical pilot corpus
         run: |
           set -euxo pipefail
