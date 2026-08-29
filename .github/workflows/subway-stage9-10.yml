@@ -1,0 +1,98 @@
+name: Subway Surfers Stages 9-10 Balanced Training
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - 'subway_ai/scripts/collect_stage9_balanced.js'
+      - 'subway_ai/scripts/build_stage9_exact_dataset.py'
+      - 'subway_ai/scripts/stage10_temporal_model.py'
+      - 'subway_ai/scripts/stage10_episode_split.py'
+      - 'subway_ai/scripts/train_stage10_temporal_encoder.py'
+      - 'subway_ai/scripts/train_stage10_imitation_policy.py'
+      - '.github/workflows/subway-stage9-10.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subway-stage9-10-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  balanced-data-and-training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      STAGE9_EPISODES: '8'
+      STAGE9_EPISODE_SECONDS: '42'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install official-game and training runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg mesa-utils libgl1-mesa-dri xvfb
+          python -m pip install --upgrade pip
+          pip install numpy opencv-python-headless
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 sharp@0.34.3
+          npx playwright install --with-deps chromium
+      - name: Stage 9 collect independent targeted official-game episodes
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/subway-stage9-balanced /tmp/subway-stage10
+          mkdir -p /tmp/subway-stage9-balanced /tmp/subway-stage10
+          set +e
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
+            node subway_ai/scripts/collect_stage9_balanced.js /tmp/subway-stage9-balanced
+          collector_status=$?
+          set -e
+          echo "collector_status=${collector_status}"
+          test -f /tmp/subway-stage9-balanced/stage9_episodes.json
+          cat /tmp/subway-stage9-balanced/stage9_collector_summary.json
+      - name: Stage 9 build exact pre-action multi-episode dataset and enforce balance gate
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/build_stage9_exact_dataset.py \
+            --root /tmp/subway-stage10 \
+            --episodes /tmp/subway-stage9-balanced/stage9_episodes.json
+          cat /tmp/subway-stage10/stage9_summary.json
+      - name: Stage 10 pretrain temporal encoder and beat explicit future baseline
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/train_stage10_temporal_encoder.py --root /tmp/subway-stage10 --epochs 32
+          cat /tmp/subway-stage10/stage10_temporal_summary.json
+      - name: Stage 10 train policy on train episodes and evaluate held-out episodes
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/train_stage10_imitation_policy.py --root /tmp/subway-stage10 --epochs 48
+          cat /tmp/subway-stage10/stage10_policy_summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stages9-10-balanced
+          path: |
+            /tmp/subway-stage9-balanced/stage9_collector_summary.json
+            /tmp/subway-stage9-balanced/stage9_episodes.json
+            /tmp/subway-stage9-balanced/*-actions.json
+            /tmp/subway-stage9-balanced/*-startup.json
+            /tmp/subway-stage10/stage9_summary.json
+            /tmp/subway-stage10/stage9_actions.jsonl
+            /tmp/subway-stage10/stage9_exact_examples
+            /tmp/subway-stage10/stage10_episode_split.json
+            /tmp/subway-stage10/stage10_temporal_summary.json
+            /tmp/subway-stage10/stage10_temporal_encoder.pt
+            /tmp/subway-stage10/stage10_policy_summary.json
+            /tmp/subway-stage10/stage10_predictions.csv
+            /tmp/subway-stage10/stage10_imitation_policy.pt
+          retention-days: 2
+          if-no-files-found: warn
