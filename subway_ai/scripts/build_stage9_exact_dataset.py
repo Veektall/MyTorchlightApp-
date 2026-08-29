@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse, json, subprocess
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
+from prepare_video_corpus import detect_crop
 
 ACTIONS = ['stay', 'left', 'right', 'jump', 'roll']
 MIN_EPISODES = 6
@@ -35,13 +36,16 @@ def select_decisions(decisions):
     return selected
 
 
-def emit_clip(video, out_path, action_t):
+def emit_clip(video, out_path, action_t, crop):
     end = VIDEO_LEAD_SEC + action_t - PRE_ACTION_GUARD_SEC
     start = max(0.0, end - 8/15)
     if end - start < 0.45:
         return False
-    vf = 'fps=15,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:black'
-    cmd = ['ffmpeg','-y','-v','error','-ss',f'{start:.4f}','-i',str(video),'-t',f'{end-start:.4f}','-an','-vf',vf,'-c:v','libx264','-preset','veryfast','-crf','24','-pix_fmt','yuv420p',str(out_path)]
+    filters = []
+    if crop:
+        filters.append(f'crop={crop}')
+    filters += ['fps=15','scale=640:360:force_original_aspect_ratio=decrease','pad=640:360:(ow-iw)/2:(oh-ih)/2:black']
+    cmd = ['ffmpeg','-y','-v','error','-ss',f'{start:.4f}','-i',str(video),'-t',f'{end-start:.4f}','-an','-vf',','.join(filters),'-c:v','libx264','-preset','veryfast','-crf','24','-pix_fmt','yuv420p',str(out_path)]
     subprocess.run(cmd, check=True)
     return True
 
@@ -64,16 +68,17 @@ def main():
             continue
         meta = probe_video(video)
         quality_ok = meta['width'] == 1280 and meta['height'] == 720 and 28.0 <= meta['fps'] <= 31.0 and meta['duration_sec'] >= 23.0
+        crop, crop_method = detect_crop(video)
         decisions = json.loads(actions_path.read_text())['decisions']
         selected = select_decisions(decisions)
         counts = Counter(d['action'] for d in selected)
-        episode_reports.append({'episode_id': ep['episode_id'], 'accepted': quality_ok, 'video': meta, 'selected_action_counts': dict(counts)})
+        episode_reports.append({'episode_id': ep['episode_id'], 'accepted': quality_ok, 'video': meta, 'active_gameplay_crop': crop, 'crop_method': crop_method, 'selected_action_counts': dict(counts)})
         if not quality_ok:
             continue
         for d in selected:
             idx = len(records) + 1
             clip = out / f"{idx:05d}-{ep['episode_id']}-{d['action']}.mp4"
-            if not emit_clip(video, clip, float(d['t_sec'])):
+            if not emit_clip(video, clip, float(d['t_sec']), crop):
                 continue
             records.append({
                 'example_id': idx,
@@ -93,7 +98,9 @@ def main():
                 'input_ends_at_or_before_action_onset': True,
                 'privileged_game_state_used': False,
                 'policy_contract': 'pixel-policy-contract-v1.1',
-                'provenance': 'self_generated_official_game_episode'
+                'provenance': 'self_generated_official_game_episode',
+                'active_gameplay_crop': crop,
+                'crop_method': crop_method
             })
 
     with (root/'stage9_actions.jsonl').open('w') as f:
@@ -116,7 +123,7 @@ def main():
         'usable_episode_count': len(usable_episodes),
         'counts': {a: counts[a] for a in ACTIONS},
         'episode_coverage_by_action': episode_coverage,
-        'canonical_observation': '640x360 landscape at 15 fps',
+        'canonical_observation': 'temporally active gameplay crop -> 640x360 landscape at 15 fps',
         'input_frames': 8,
         'post_action_pixels_in_examples': False,
         'alignment': {
