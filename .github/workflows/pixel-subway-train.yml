@@ -1,0 +1,195 @@
+name: Pixel Subway Policy Train
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'pixel-subway-train-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download corrected authentic visual dataset
+        uses: actions/download-artifact@v4
+        with:
+          name: pixel-subway-visual-dataset-v2
+          path: /tmp/pss-dataset
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Veektall/MyTorchlightApp-
+          run-id: 33245961874
+
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --quiet torch torchvision pillow numpy
+
+      - name: Train matched policies
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/pss-train
+          cat > /tmp/train.py <<'PY'
+          import csv, json, math, random, shutil
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image
+          import torch
+          import torch.nn as nn
+          import torch.nn.functional as F
+          from torch.utils.data import Dataset, DataLoader
+
+          ROOT=Path('/tmp/pss-dataset'); OUT=Path('/tmp/pss-train'); OUT.mkdir(exist_ok=True)
+          rows=list(csv.DictReader((ROOT/'samples.csv').open()))
+          unique=sorted(set(float(r['speed']) for r in rows))
+          if len(unique)<4: raise SystemExit(f'QUALITY GATE: insufficient speed regimes {unique}')
+          n=len(unique); a=max(1,int(round(n*.60))); b=max(a+1,int(round(n*.80))); b=min(b,n-1)
+          train_s=set(unique[:a]); val_s=set(unique[a:b]); test_s=set(unique[b:])
+          print('SPEED_SPLIT',unique,'train',sorted(train_s),'val',sorted(val_s),'test',sorted(test_s))
+
+          pairs=[]
+          for i in range(1,len(rows)):
+              p,r=rows[i-1],rows[i]
+              if float(r['wall_s'])-float(p['wall_s'])>0.25: continue
+              speed=float(r['speed']); split='train' if speed in train_s else ('val' if speed in val_s else 'test')
+              pairs.append((p,r,split))
+          for split in ['train','val','test']:
+              xs=[x for x in pairs if x[2]==split]; pos=sum(int(x[1]['jump_label']) for x in xs)
+              print(split,'pairs',len(xs),'positives',pos)
+              if len(xs)<40 or pos<3: raise SystemExit(f'QUALITY GATE: weak {split}: n={len(xs)} pos={pos}')
+
+          def load_pair(p,r):
+              ims=[]
+              for q in (p,r):
+                  im=Image.open(ROOT/'frames'/q['sample']).convert('RGB')
+                  arr=np.asarray(im,dtype=np.float32)/255.0
+                  # Remove score/HUD; keep causal playfield containing player + obstacle.
+                  arr=arr[38:120,:,:]
+                  t=torch.from_numpy(arr).permute(2,0,1)
+                  t=F.interpolate(t.unsqueeze(0),size=(64,128),mode='bilinear',align_corners=False).squeeze(0)
+                  ims.append(t)
+              return torch.cat(ims,0)
+
+          class DS(Dataset):
+              def __init__(self,split): self.x=[x for x in pairs if x[2]==split]
+              def __len__(self): return len(self.x)
+              def __getitem__(self,i):
+                  p,r,_=self.x[i]; x=load_pair(p,r); y=torch.tensor(float(r['jump_label']))
+                  # Causal coordinates available only as training/eval targets, never policy inputs.
+                  ttc=np.clip(float(r['ttc']),-1,5)/5.0
+                  speed=(float(r['speed'])-min(unique))/max(1.0,max(unique)-min(unique))
+                  py=float(r['player_y'])/600.0
+                  typ=float(r['hurdle_type'])
+                  g=torch.tensor([ttc,speed,py,typ],dtype=torch.float32)
+                  return x,y,g
+
+          class Net(nn.Module):
+              def __init__(self):
+                  super().__init__()
+                  self.conv=nn.Sequential(
+                    nn.Conv2d(6,16,5,2,2),nn.ReLU(),
+                    nn.Conv2d(16,32,3,2,1),nn.ReLU(),
+                    nn.Conv2d(32,64,3,2,1),nn.ReLU(),
+                    nn.AdaptiveAvgPool2d((2,4)))
+                  self.fc=nn.Linear(64*2*4,16); self.head=nn.Linear(16,1)
+              def forward(self,x):
+                  z=torch.tanh(self.fc(self.conv(x).flatten(1)))
+                  return self.head(z).squeeze(1),z
+
+          def augment(x):
+              # Nuisance-only appearance changes. Same underlying causal scene.
+              B=x.shape[0]
+              gain=(.72+.56*torch.rand(B,1,1,1,device=x.device))
+              bias=(-.10+.20*torch.rand(B,1,1,1,device=x.device))
+              channel=(.82+.36*torch.rand(B,6,1,1,device=x.device))
+              noise=.025*torch.randn_like(x)
+              return (x*gain*channel+bias+noise).clamp(0,1)
+
+          def metrics(logits,y,threshold=.5):
+              p=(torch.sigmoid(logits)>=threshold).long(); y=y.long()
+              tp=int(((p==1)&(y==1)).sum()); fp=int(((p==1)&(y==0)).sum()); fn=int(((p==0)&(y==1)).sum()); tn=int(((p==0)&(y==0)).sum())
+              prec=tp/max(1,tp+fp); rec=tp/max(1,tp+fn); f1=2*prec*rec/max(1e-9,prec+rec); bal=.5*(tp/max(1,tp+fn)+tn/max(1,tn+fp))
+              return {'tp':tp,'fp':fp,'fn':fn,'tn':tn,'precision':prec,'recall':rec,'f1':f1,'balanced_accuracy':bal}
+
+          @torch.no_grad()
+          def collect(model,loader):
+              model.eval(); L=[];Y=[];Z=[];G=[]
+              for x,y,g in loader:
+                  l,z=model(x); L.append(l);Y.append(y);Z.append(z);G.append(g)
+              return torch.cat(L),torch.cat(Y),torch.cat(Z),torch.cat(G)
+
+          def best_threshold(l,y):
+              best=(0.5,-1)
+              for th in np.linspace(.05,.95,37):
+                  m=metrics(l,y,float(th))
+                  if m['f1']>best[1]: best=(float(th),m['f1'])
+              return best[0]
+
+          def linear_probe(ztr,gtr,zte,gte):
+              X=np.c_[ztr.numpy(),np.ones(len(ztr))]; Xt=np.c_[zte.numpy(),np.ones(len(zte))]
+              out={}
+              for j,name in enumerate(['ttc','speed','player_y','hurdle_type']):
+                  coef=np.linalg.lstsq(X,gtr[:,j].numpy(),rcond=1e-5)[0]; pred=Xt@coef; true=gte[:,j].numpy()
+                  ss=((true-pred)**2).sum(); denom=((true-true.mean())**2).sum()+1e-9
+                  out[name+'_r2']=float(1-ss/denom)
+              return out
+
+          train=DS('train'); val=DS('val'); test=DS('test')
+          seeds=[11,22,33]; allres=[]; bestfiles={}
+          for variant in ['baseline','geometry']:
+            best_val=-1; best_path=None
+            for seed in seeds:
+              random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+              model=Net(); opt=torch.optim.AdamW(model.parameters(),lr=2e-3,weight_decay=1e-4)
+              gen=torch.Generator().manual_seed(seed)
+              tr=DataLoader(train,batch_size=64,shuffle=True,generator=gen,num_workers=2)
+              va=DataLoader(val,batch_size=128,shuffle=False,num_workers=2); te=DataLoader(test,batch_size=128,shuffle=False,num_workers=2)
+              pos=sum(int(train[i][1].item()) for i in range(len(train))); neg=len(train)-pos
+              pw=torch.tensor(neg/max(1,pos),dtype=torch.float32)
+              for epoch in range(18):
+                model.train(); total=0
+                for x,y,g in tr:
+                  x1=augment(x); x2=augment(x)
+                  l1,z1=model(x1); l2,z2=model(x2)
+                  cls=.5*(F.binary_cross_entropy_with_logits(l1,y,pos_weight=pw)+F.binary_cross_entropy_with_logits(l2,y,pos_weight=pw))
+                  loss=cls
+                  if variant=='geometry':
+                    geom=.5*(F.mse_loss(z1[:,:4],g)+F.mse_loss(z2[:,:4],g))
+                    inv=F.mse_loss(z1,z2)
+                    loss=cls+1.0*geom+0.20*inv
+                  opt.zero_grad(); loss.backward(); torch.nn.utils.clip_grad_norm_(model.parameters(),5); opt.step(); total+=float(loss)
+                if epoch in (0,5,11,17): print(variant,seed,'epoch',epoch,'loss',total/max(1,len(tr)))
+              lva,yva,zva,gva=collect(model,va); th=best_threshold(lva,yva); mv=metrics(lva,yva,th)
+              lte,yte,zte,gte=collect(model,te); mt=metrics(lte,yte,th)
+              ltr,ytr,ztr,gtr=collect(model,DataLoader(train,batch_size=128,shuffle=False,num_workers=2))
+              probe=linear_probe(ztr,gtr,zte,gte)
+              row={'variant':variant,'seed':seed,'threshold':th,'val':mv,'test':mt,'probe_test':probe}
+              allres.append(row); print('RESULT',json.dumps(row))
+              path=OUT/f'{variant}_seed{seed}.pt'; torch.save({'state_dict':model.state_dict(),'threshold':th,'variant':variant,'seed':seed,'speed_split':{'train':sorted(train_s),'val':sorted(val_s),'test':sorted(test_s)}},path)
+              if mv['f1']>best_val: best_val=mv['f1']; best_path=path
+            shutil.copy2(best_path,OUT/f'selected_{variant}.pt'); bestfiles[variant]=best_path.name
+
+          def agg(v,key):
+              a=[r[key]['f1'] for r in allres if r['variant']==v]; return {'mean_f1':float(np.mean(a)),'std_f1':float(np.std(a)),'values':a}
+          report={'speed_regimes':unique,'split':{'train':sorted(train_s),'val':sorted(val_s),'test':sorted(test_s)},'runs':allres,
+                  'aggregate':{'baseline_test':agg('baseline','test'),'geometry_test':agg('geometry','test')},'selected':bestfiles,
+                  'interpretation_note':'Geometry is independently operationalized as explicit causal latent coordinates + nuisance invariance; this is not Sophontic proprietary training.'}
+          (OUT/'results.json').write_text(json.dumps(report,indent=2)); print(json.dumps(report['aggregate'],indent=2))
+          PY
+          python /tmp/train.py | tee /tmp/pss-train/train.log
+
+      - name: Upload policy experiment
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-subway-policy-experiment
+          path: /tmp/pss-train
+          if-no-files-found: error
+          retention-days: 1
