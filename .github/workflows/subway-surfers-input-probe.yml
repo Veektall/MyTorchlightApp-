@@ -1,0 +1,41 @@
+name: Subway Surfers Input Probe
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'subway-surfers-input-probe-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser runtime
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1-mesa-dri
+      - name: Probe nested-frame keyboard input
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -euxo pipefail
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' node subway-input-probe.js
+          find /tmp/subway-input -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-surfers-input-probe
+          path: /tmp/subway-input
+          retention-days: 1
+          if-no-files-found: error
