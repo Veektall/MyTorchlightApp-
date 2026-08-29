@@ -1,0 +1,105 @@
+name: Pixel Subway Authentic Smoke
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - '.github/workflows/pixel-subway-smoke.yml'
+      - 'pixel-subway-smoke-trigger.txt'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download authentic acquisition artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pixel-subway-authentic
+          path: /tmp/pss-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Veektall/MyTorchlightApp-
+          run-id: 33245344268
+
+      - name: Prepare runtime
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils xdotool ffmpeg unzip
+          mkdir -p /tmp/pss-run /tmp/pss-out
+          unzip -q /tmp/pss-artifact/PSSLinux.zip -d /tmp/pss-run
+          find /tmp/pss-run -maxdepth 2 -type f -printf '%p %s bytes\n' | head -80
+          chmod +x /tmp/pss-run/PixelSubwaySurfers
+          sha256sum /tmp/pss-artifact/PSSLinux.zip | tee /tmp/pss-out/linux-sha256.txt
+
+      - name: Run authentic game and record
+        run: |
+          set -uxo pipefail
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > /tmp/pss-out/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 1
+
+          pulseaudio --start --exit-idle-time=-1 --log-target=file:/tmp/pss-out/pulse.log || true
+          sleep 1
+          pactl load-module module-null-sink sink_name=virtual sink_properties=device.description=Virtual >/tmp/pss-out/pulse-module.txt || true
+          pactl set-default-sink virtual || true
+          pactl info > /tmp/pss-out/pactl-info.txt || true
+
+          ffmpeg -y -loglevel warning -f x11grab -framerate 30 -video_size 1280x720 -i :99 \
+            -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p /tmp/pss-out/authentic-smoke.mp4 \
+            > /tmp/pss-out/ffmpeg.log 2>&1 &
+          FF_PID=$!
+
+          cd /tmp/pss-run
+          ALSOFT_DRIVERS=pulse LIBGL_ALWAYS_SOFTWARE=1 ./PixelSubwaySurfers > /tmp/pss-out/game.log 2>&1 &
+          GAME_PID=$!
+          echo $GAME_PID > /tmp/pss-out/game.pid
+
+          sleep 5
+          xdotool search --name 'Pixel Subway Surfers' > /tmp/pss-out/windows.txt || true
+          WIN=$(head -1 /tmp/pss-out/windows.txt || true)
+          if [ -n "$WIN" ]; then
+            xdotool windowfocus "$WIN" || true
+          fi
+          xdotool key Return || true
+
+          # Visible smoke-play sequence using the game's real controls.
+          sleep 2
+          for i in 1 2 3 4 5 6 7 8; do
+            xdotool key space || true
+            sleep 1.25
+          done
+          xdotool key h || true
+          for i in 1 2 3 4; do
+            sleep 1.3
+            xdotool key space || true
+          done
+          sleep 4
+
+          ffmpeg -y -loglevel error -f x11grab -video_size 1280x720 -i :99 -frames:v 1 /tmp/pss-out/final-frame.png || true
+          kill "$GAME_PID" 2>/dev/null || true
+          sleep 1
+          kill -INT "$FF_PID" 2>/dev/null || true
+          wait "$FF_PID" 2>/dev/null || true
+          kill "$XVFB_PID" 2>/dev/null || true
+
+          ls -lah /tmp/pss-out
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,width,height,r_frame_rate -of json /tmp/pss-out/authentic-smoke.mp4 > /tmp/pss-out/video-info.json || true
+          cat /tmp/pss-out/video-info.json || true
+          tail -100 /tmp/pss-out/game.log || true
+
+      - name: Upload authentic gameplay recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-subway-authentic-smoke
+          path: /tmp/pss-out
+          if-no-files-found: error
+          retention-days: 1
