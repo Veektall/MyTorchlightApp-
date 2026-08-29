@@ -34,13 +34,10 @@ function frameFeatures(buf) {
       if(cnt){rMean/=cnt;gMean/=cnt;bMean/=cnt; rgbSpread += Math.max(rMean,gMean,bMean)-Math.min(rMean,gMean,bMean);}
     }
     dy/=Math.max(n,1); dx/=Math.max(n,1); rgbSpread/=72;
-    // Open track normally contains visible rail/texture variation (dx) but relatively few
-    // strong cross-lane interruptions (dy). Flat occluders are penalized through low dx.
     const flatPenalty=3.0*Math.max(0,7.0-dx);
     const risk=dy + flatPenalty + 0.035*rgbSpread;
     lanes.push({dy,dx,rgbSpread,risk});
   }
-  // Cheap downsample signature for stagnation / restart detection.
   const sig=[];
   for(let gy=0;gy<12;gy++) for(let gx=0;gx<20;gx++) {
     const x=Math.floor((gx+0.5)*w/20), y=Math.floor((gy+0.5)*h/12);
@@ -65,13 +62,10 @@ function chooseAction(features, state) {
   for(const i of candidates) if(r[i]<r[best]) best=i;
   const minRisk=r[best], curRisk=r[current];
 
-  // If every visible corridor is interrupted, a jump is usually safer than changing
-  // into the side of a train. Otherwise escape a clearly worse current lane.
   if(minRisk>15.0 || curRisk>21.0) return {action:'jump', reason:'all_or_current_blocked', r};
   if(best!==current && curRisk-r[best]>3.4 && r[best]<15.0) {
     return {action:best<current?'left':'right', reason:'safer_lane', r};
   }
-  // Periodic conservative jump handles low barriers that are visually small until late.
   if(state.stepsSinceJump>=5 && curRisk>12.8) return {action:'jump',reason:'low_barrier_guard',r};
   return {action:'stay',reason:'corridor_clear',r};
 }
@@ -99,16 +93,29 @@ async function main(){
   if(!canvas) throw new Error('official Subway Surfers canvas not found');
   const exact=await game.evaluate(()=>{const c=document.createElement('canvas');const gl=c.getContext('webgl',{stencil:true,failIfMajorPerformanceCaveat:true});return {ok:!!gl,attrs:gl?gl.getContextAttributes():null};});
   if(!exact.ok)throw new Error('native exact WebGL gate failed '+JSON.stringify(exact));
-  fs.writeFileSync(`${OUT}/runtime.json`,JSON.stringify({url:game.url(),exact},null,2));
+  fs.writeFileSync(`${OUT}/runtime.json`,JSON.stringify({url:game.url(),exact,inputRouting:'nested-frame-body'},null,2));
 
-  const box=await canvas.boundingBox(); if(box) await canvas.click({position:{x:box.width/2,y:box.height/2},force:true});
-  await page.keyboard.press('Space'); await sleep(3500);
+  const gameBody=game.locator('body');
+  const sendKey=async key=>{
+    await gameBody.focus();
+    await gameBody.press(key,{delay:120});
+  };
 
-  // One-time official tutorial bootstrap. Wrong tutorial keys are harmless; cycling the
-  // four official movement controls lets each prompt consume the key it is waiting for.
-  const tutorial=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
-  for(let cycle=0;cycle<3;cycle++) for(const key of tutorial){await page.keyboard.press(key);await sleep(2800);}
+  const box=await canvas.boundingBox();
+  if(box) await canvas.click({position:{x:box.width/2,y:box.height/2},force:true});
+  await gameBody.focus();
+  await sendKey('Space');
   await sleep(3500);
+  fs.writeFileSync(`${OUT}/frames/tutorial-before.png`,await canvas.screenshot());
+
+  // One-time tutorial bootstrap. Controls are sent directly to the nested SYBO frame;
+  // cycling is safe because only the currently requested tutorial action advances it.
+  const tutorial=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+  for(let cycle=0;cycle<4;cycle++) {
+    for(const key of tutorial){await sendKey(key);await sleep(2200);}
+  }
+  await sleep(3000);
+  fs.writeFileSync(`${OUT}/frames/tutorial-after.png`,await canvas.screenshot());
 
   const log=[];
   const state={lane:0,stepsSinceJump:99,prevSig:null,stagnant:0};
@@ -122,13 +129,13 @@ async function main(){
     let decision;
     if(state.stagnant>=2){
       decision={action:'restart',reason:'pixel_stagnation',r:f.lanes.map(x=>x.risk)};
-      await page.keyboard.press('Space'); await sleep(1000); await page.keyboard.press('ArrowUp');
+      await sendKey('Space'); await sleep(1000); await sendKey('ArrowUp');
       state.lane=0; state.stagnant=0;
     } else {
       decision=chooseAction(f,state);
       const map={left:'ArrowLeft',right:'ArrowRight',jump:'ArrowUp'};
       if(map[decision.action]){
-        await page.keyboard.press(map[decision.action]);
+        await sendKey(map[decision.action]);
         if(decision.action==='left')state.lane=Math.max(-1,state.lane-1);
         if(decision.action==='right')state.lane=Math.min(1,state.lane+1);
         if(decision.action==='jump')state.stepsSinceJump=0;
