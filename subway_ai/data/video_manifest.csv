@@ -1,6 +1,8 @@
 source_id,url,category,commentary,score_band,reuse_status,auto_ingest,notes
-imnotru_2024_1h,https://www.youtube.com/watch?v=W2Qvg6XkxGs,long_competent,no,unknown,uploader_claim_free_to_use_title,yes,"One-hour no-commentary gameplay; title explicitly says free to use; pilot ingestion source."
-imnotru_2023_1h,https://www.youtube.com/watch?v=zZ7AimPACzc,long_competent,no,unknown,uploader_claim_free_to_use_title,yes,"One-hour no-commentary gameplay; title explicitly says free to use; second pilot source."
+city_cc_2023,https://www.youtube.com/watch?v=zKuxI3AMOwo,reusable_gameplay,no,unknown,explicit_creative_commons_claim,yes,"Uploader description says gameplay was recorded for editing and the video has a Creative Commons license. Pilot browser-capture source."
+yurii_cc_2024,https://www.youtube.com/watch?v=jp-EsCMoG3M,reusable_gameplay,no,unknown,explicit_cc_attribution_claim,yes,"Uploader explicitly states Creative Commons Attribution and free to use. Pilot browser-capture source."
+imnotru_2024_1h,https://www.youtube.com/watch?v=W2Qvg6XkxGs,long_competent,no,unknown,uploader_claim_free_to_use_title,no,"One-hour no-commentary gameplay; title says free to use; retain as expansion candidate after acquisition is stable."
+imnotru_2023_1h,https://www.youtube.com/watch?v=zZ7AimPACzc,long_competent,no,unknown,uploader_claim_free_to_use_title,no,"One-hour no-commentary gameplay; title says free to use; retain as expansion candidate after acquisition is stable."
 khgamer_highscore_2026,https://www.youtube.com/watch?v=X0rvh2xx3WE,high_score_candidate,no,high,permission_unverified,no,"Long uninterrupted high-score attempt; useful expert candidate once reuse basis is verified."
 throneful_2018_compilation,https://www.youtube.com/watch?v=dvjy6V4vLlI,competent_compilation,no,mixed,permission_unverified,no,"High-view gameplay compilation; discovery only until reuse basis is verified."
 redfi_long_gameplay,https://www.youtube.com/watch?v=jCij-Ml8MYw,long_competent,no,unknown,permission_unverified,no,"Long no-commentary gameplay; discovery only until reuse basis is verified."
