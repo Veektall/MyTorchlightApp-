@@ -1,1 +1,1 @@
-trigger 2026-08-29 VisionAgent v0.1.1 nested-frame input routing
+trigger 2026-08-29 VisionAgent v0.1.2 focused-canvas input routing
