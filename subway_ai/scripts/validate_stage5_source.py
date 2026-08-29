@@ -39,7 +39,7 @@ def main():
     cap.release()
     if freeze_start is not None and dur-freeze_start>=2: frozen.append([round(freeze_start,3),round(dur,3)])
     actual=sha256(p); expected=(a.expected_sha256 or row.get('expected_sha256','')).strip().lower()
-    reuse_ok=row.get('reuse_status','').lower() in {'uploader_explicit_free_to_use','explicit_creative_commons_claim','explicit_cc_attribution_claim'}
+    reuse_ok=row.get('reuse_status','').lower() in {'uploader_explicit_free_to_use','explicit_creative_commons_claim','explicit_cc_attribution_claim','self_generated_official_game'}
     checks={
       'hash_match': (not expected) or actual==expected,
       'duration_ge_30s': dur>=30,
@@ -51,9 +51,8 @@ def main():
       'reuse_verified': reuse_ok,
     }
     eligible=all(checks.values())
-    report={'stage':'5-continuous-source-validation-v1','source_id':a.source_id,'video':str(p),'sha256':actual,'expected_sha256':expected or None,'duration_sec':round(dur,3),'width':w,'height':h,'fps':round(fps,3),'median_halfsec_frame_mad':round(float(np.median(diffs)) if diffs else 0,3),'hard_cut_times_sec':cuts,'hard_cuts_per_min':round(len(cuts)/max(dur/60,1e-6),3),'freeze_intervals_sec':frozen,'checks':checks,'training_eligible':eligible}
+    report={'stage':'5-continuous-source-validation-v1','source_id':a.source_id,'video':str(p),'sha256':actual,'expected_sha256':expected or None,'duration_sec':round(dur,3),'width':w,'height':h,'fps':round(fps,3),'median_halfsec_frame_mad':round(float(np.median(diffs)) if diffs else 0,3),'hard_cut_times_sec':cuts,'hard_cuts_per_min':round(len(cuts)/max(dur/60,1e-6),3),'freeze_intervals_sec':frozen,'checks':checks,'training_eligible':eligible,'dataset_role':row.get('category')}
     (out/'stage5_source_report.json').write_text(json.dumps(report,indent=2))
-    # Promote only in a temporary manifest after objective validation.
     fields=list(rows[0].keys())
     with open(out/'stage5_promoted_manifest.csv','w',newline='') as f:
         wr=csv.DictWriter(f,fieldnames=fields); wr.writeheader()
