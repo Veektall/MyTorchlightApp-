@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 
 ACTIONS = ['stay', 'left', 'right', 'jump', 'roll']
-ACTION_TO_ID = {a: i for i, a in enumerate(ACTIONS)}
+ACTION_TO_ID = {a:i for i,a in enumerate(ACTIONS)}
 
 
 def load_clip(path, frames=8, width=96, height=54):
@@ -52,18 +52,25 @@ class TemporalEncoder(nn.Module):
 
 
 class Stage10Pretrainer(nn.Module):
-    """Predict the 8th-frame visual latent from frames 1..7 and classify temporal direction."""
+    """Predict frame 8 as persistence plus a learned temporal residual from frames 1..7."""
     def __init__(self, frame_dim=64, hidden=96, temperature=0.10):
         super().__init__()
         self.encoder = TemporalEncoder(frame_dim, hidden)
-        self.future = nn.Sequential(nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, frame_dim))
+        self.future_delta = nn.Sequential(
+            nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, frame_dim))
+        # Start exactly at the persistence baseline: delta = 0.
+        nn.init.zeros_(self.future_delta[-1].weight)
+        nn.init.zeros_(self.future_delta[-1].bias)
         self.direction = nn.Linear(hidden, 2)
         self.temperature = temperature
 
     def forward(self, x):
         _, h = self.encoder(x[:, :7])
-        pred = F.normalize(self.future(h), dim=1)
-        target = F.normalize(self.encoder.frame(x[:, 7]), dim=1)
+        last = self.encoder.frame(x[:, 6])
+        pred = F.normalize(last + self.future_delta(h), dim=1)
+        # Stop-gradient target prevents the target representation from moving merely to
+        # make the prediction task easier; learning pressure stays on history + residual.
+        target = F.normalize(self.encoder.frame(x[:, 7]), dim=1).detach()
         return pred, target, self.direction(h)
 
     def contrastive_loss(self, pred, target):
@@ -76,7 +83,7 @@ class Stage10Policy(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = TemporalEncoder()
-        self.head = nn.Sequential(nn.Linear(96, 64), nn.ReLU(), nn.Dropout(.15), nn.Linear(64, len(ACTIONS)))
-    def forward(self, x):
-        _, h = self.encoder(x)
+        self.head = nn.Sequential(nn.Linear(96,64),nn.ReLU(),nn.Dropout(.15),nn.Linear(64,len(ACTIONS)))
+    def forward(self,x):
+        _,h=self.encoder(x)
         return self.head(h)
