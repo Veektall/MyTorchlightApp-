@@ -1,1 +1,1 @@
-trigger 2026-08-29 runtime bootstrap inspection v2
+trigger 2026-08-29 runtime bundle WebGL inspection v3
