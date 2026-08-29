@@ -48,7 +48,7 @@ jobs:
 
           p=Path('Sprites/Player.cs')
           s=p.read_text(encoding='utf-8-sig')
-          s=s.replace('public bool Lost;\n', '''public bool Lost;\n    public float VelocityY => velocity.Y;\n    public int HoverboardsRemaining => hbLimit;\n    public void TestJump() { if (velocity.Y == 0 && !Dead) { velocity.Y = JumpForce; jump.Play(); } }\n    public void TestHover() { if (HbTimer <= 0 && hbLimit > 0 && !Dead) { if (hbLimit > 1) HbTimer = 15000; hbLimit -= 1; } }\n''')
+          s=s.replace('public bool Lost;\n', '''public bool Lost;\n    public float VelocityY => velocity.Y;\n    public int HoverboardsRemaining => hbLimit;\n    public void TestJump() { if (velocity.Y == 0 && !Dead) { Position.Y -= 1.0f; Bounds.Y = (int)Position.Y; velocity.Y = JumpForce; jump.Play(); } }\n    public void TestHover() { if (HbTimer <= 0 && hbLimit > 0 && !Dead) { if (hbLimit > 1) HbTimer = 15000; hbLimit -= 1; } }\n''')
           p.write_text(s, encoding='utf-8')
 
           p=Path('Sprites/Hurdle.cs')
@@ -87,7 +87,7 @@ jobs:
       - name: Upload instrumented build
         uses: actions/upload-artifact@v4
         with:
-          name: pixel-subway-instrumented-build-v2
+          name: pixel-subway-instrumented-build-v3
           path: /tmp/pss-out
           if-no-files-found: error
           retention-days: 1
