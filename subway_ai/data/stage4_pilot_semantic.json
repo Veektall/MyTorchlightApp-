@@ -1,0 +1,18 @@
+{
+  "video_duration_sec": 10.2,
+  "events": [
+    {
+      "time_sec": 3.1,
+      "action": "roll",
+      "confidence": 0.78,
+      "visual_evidence": "Runner visibly compresses low while passing beneath the horizontal overhead bar; neighboring frames show the bar crossing the runner's path."
+    }
+  ],
+  "stable_no_action_intervals": [],
+  "quality_notes": [
+    "This source is a 264x148 preview upscaled for pipeline QC, not training-quality footage.",
+    "The preview contains multiple hard editorial cuts, so scene transitions and camera/object motion must not be converted into player-action labels.",
+    "Only the roll near 3.1s was visually distinguishable enough to label; other Stage-4 CV candidates remain unlabeled rather than guessed.",
+    "The source is training_eligible=no, therefore this semantic label is for end-to-end Stage-4 validation only and cannot enter policy training."
+  ]
+}
