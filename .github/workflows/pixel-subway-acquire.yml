@@ -1,0 +1,113 @@
+name: Pixel Subway Acquire
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - '.github/workflows/pixel-subway-acquire.yml'
+      - 'pixel-subway-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright Chromium
+        run: |
+          mkdir -p /tmp/pss-acquire
+          cd /tmp/pss-acquire
+          npm init -y
+          npm install playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Download authentic itch.io files
+        run: |
+          cat > /tmp/pss-acquire/download.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          import path from 'path';
+
+          const out = '/tmp/pss-files';
+          fs.mkdirSync(out, {recursive:true});
+          const browser = await chromium.launch({headless:true});
+          const context = await browser.newContext({acceptDownloads:true, viewport:{width:1280,height:1000}});
+          const page = await context.newPage();
+          page.setDefaultTimeout(60000);
+          page.on('console', m => console.log('PAGE:', m.text()));
+
+          await page.goto('https://lumis-dev.itch.io/pixel-subway-surfers/purchase', {
+            waitUntil: 'domcontentloaded', timeout: 120000
+          });
+          await page.screenshot({path:path.join(out,'01-purchase.png'), fullPage:true});
+          console.log('PURCHASE_URL', page.url());
+          console.log('PURCHASE_TEXT\n' + (await page.locator('body').innerText()).slice(0,12000));
+
+          const free = page.getByText('No thanks, just take me to the downloads', {exact:false}).first();
+          await free.waitFor({state:'visible'});
+          await free.click();
+          await page.waitForLoadState('domcontentloaded').catch(()=>{});
+          await page.waitForTimeout(2500);
+          await page.screenshot({path:path.join(out,'02-downloads.png'), fullPage:true});
+          console.log('DOWNLOADS_URL', page.url());
+          console.log('DOWNLOADS_TEXT\n' + (await page.locator('body').innerText()).slice(0,16000));
+
+          async function grab(label, filename) {
+            const fileText = page.getByText(label, {exact:false}).first();
+            await fileText.waitFor({state:'visible'});
+
+            let row = fileText.locator('xpath=ancestor::*[contains(@class,"upload")][1]');
+            if (await row.count() === 0) row = fileText.locator('xpath=ancestor::*[self::div or self::li][.//a or .//button][1]');
+
+            let button = row.getByRole('button', {name:/download/i}).first();
+            if (await button.count() === 0) button = row.getByRole('link', {name:/download/i}).first();
+            if (await button.count() === 0) button = row.locator('a.button, button, a').filter({hasText:/download/i}).first();
+
+            console.log('GRAB', label, 'rowCount=', await row.count(), 'buttonCount=', await button.count());
+            const [download] = await Promise.all([
+              page.waitForEvent('download', {timeout:120000}),
+              button.click()
+            ]);
+            const dest = path.join(out, filename);
+            await download.saveAs(dest);
+            console.log('SAVED', filename, fs.statSync(dest).size, 'suggested=', download.suggestedFilename());
+          }
+
+          await grab('PSSSourcecode.zip', 'PSSSourcecode.zip');
+          await grab('PSSLinux.zip', 'PSSLinux.zip');
+
+          const crypto = await import('crypto');
+          const manifest = {};
+          for (const name of ['PSSSourcecode.zip','PSSLinux.zip']) {
+            const data = fs.readFileSync(path.join(out,name));
+            manifest[name] = {bytes:data.length, sha256:crypto.createHash('sha256').update(data).digest('hex')};
+          }
+          fs.writeFileSync(path.join(out,'manifest.json'), JSON.stringify(manifest,null,2));
+          console.log('MANIFEST', JSON.stringify(manifest));
+          await browser.close();
+          EOF
+          cd /tmp/pss-acquire
+          node download.mjs
+
+      - name: List acquired files
+        if: always()
+        run: |
+          ls -lah /tmp/pss-files || true
+          cat /tmp/pss-files/manifest.json 2>/dev/null || true
+
+      - name: Upload authentic files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixel-subway-authentic
+          path: /tmp/pss-files
+          if-no-files-found: error
+          retention-days: 1
