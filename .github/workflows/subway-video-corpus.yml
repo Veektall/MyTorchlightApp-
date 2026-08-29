@@ -1,14 +1,16 @@
-name: Subway Surfers Video Corpus Pilot
+name: Subway Surfers Stages 5-6 Corpus
 
 on:
   push:
     branches: [subway-video-corpus]
     paths:
       - 'subway_ai/data/video_manifest.csv'
-      - 'subway_ai/data/stage4_pilot_semantic.json'
+      - 'subway_ai/scripts/acquire_stage5_source.js'
+      - 'subway_ai/scripts/validate_stage5_source.py'
       - 'subway_ai/scripts/prepare_video_corpus.py'
       - 'subway_ai/scripts/finalize_corpus_metadata.py'
       - 'subway_ai/scripts/infer_pseudo_actions.py'
+      - 'subway_ai/scripts/build_stage6_labels.py'
       - 'subway_ai/video-corpus-trigger.txt'
       - '.github/workflows/subway-video-corpus.yml'
 
@@ -18,77 +20,96 @@ permissions:
 jobs:
   build-corpus:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install corpus tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install corpus and browser tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg curl
+          sudo apt-get install -y ffmpeg curl p7zip-full
           python -m pip install --upgrade pip
-          pip install 'yt-dlp>=2025.8.22' numpy pillow opencv-python-headless
-      - name: Acquire one approved direct-media pilot
+          pip install numpy pillow opencv-python-headless
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Stage 5 acquire verified Top-20 source
         run: |
           set -euxo pipefail
-          rm -rf /tmp/subway-video-corpus
-          mkdir -p /tmp/subway-video-corpus/raw
-          python - <<'PY' > /tmp/approved.tsv
+          rm -rf /tmp/subway-video-corpus /tmp/stage5-download* /tmp/stage5-extract
+          mkdir -p /tmp/subway-video-corpus/raw /tmp/stage5-extract
+          python - <<'PY' > /tmp/stage5.tsv
           import csv
-          rows=[r for r in csv.DictReader(open('subway_ai/data/video_manifest.csv')) if r['auto_ingest'].lower()=='yes' and r.get('direct_media_url')]
-          if not rows:
-              raise SystemExit('no approved direct-media source in manifest')
-          r=rows[0]
-          print(r['source_id']+'\t'+r['direct_media_url'])
+          r=next(x for x in csv.DictReader(open('subway_ai/data/video_manifest.csv')) if x['source_id']=='ludo_top20_2022')
+          print('\t'.join([r['source_id'],r['transport_locator'],r['expected_sha256']]))
           PY
-          IFS=$'\t' read -r SID MEDIA_URL < /tmp/approved.tsv
-          curl --fail --location --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 120 \
-            -A 'Mozilla/5.0' "$MEDIA_URL" -o "/tmp/subway-video-corpus/raw/${SID}.mp4"
-          test -s "/tmp/subway-video-corpus/raw/${SID}.mp4"
-          ffprobe -v error -show_entries format=duration:stream=width,height,avg_frame_rate -of json "/tmp/subway-video-corpus/raw/${SID}.mp4"
-      - name: Build canonical pilot corpus
+          IFS=$'\t' read -r SID SAMPLE EXPECTED_SHA < /tmp/stage5.tsv
+          node subway_ai/scripts/acquire_stage5_source.js --sample "$SAMPLE" --out /tmp/stage5-download.bin --sha256 "$EXPECTED_SHA"
+          file /tmp/stage5-download.bin
+          if file /tmp/stage5-download.bin | grep -qi 'zip archive'; then
+            7z x -y -pinfected -o/tmp/stage5-extract /tmp/stage5-download.bin || 7z x -y -o/tmp/stage5-extract /tmp/stage5-download.bin
+            MEDIA="$(find /tmp/stage5-extract -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.webm' \) -print -quit)"
+            test -n "$MEDIA"
+            cp "$MEDIA" "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          else
+            cp /tmp/stage5-download.bin "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          fi
+          ACTUAL_SHA="$(sha256sum "/tmp/subway-video-corpus/raw/${SID}.mp4" | awk '{print $1}')"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          ffprobe -v error -show_entries format=duration,size:stream=width,height,avg_frame_rate -of json "/tmp/subway-video-corpus/raw/${SID}.mp4"
+          python subway_ai/scripts/validate_stage5_source.py \
+            --video "/tmp/subway-video-corpus/raw/${SID}.mp4" \
+            --manifest subway_ai/data/video_manifest.csv \
+            --source-id "$SID" \
+            --expected-sha256 "$EXPECTED_SHA" \
+            --out /tmp/subway-video-corpus
+      - name: Build full canonical continuous corpus
         run: |
           set -euxo pipefail
           python subway_ai/scripts/prepare_video_corpus.py \
-            --manifest subway_ai/data/video_manifest.csv \
+            --manifest /tmp/subway-video-corpus/stage5_promoted_manifest.csv \
             --out /tmp/subway-video-corpus \
             --max-sources 1 \
-            --max-seconds 30 \
+            --max-seconds 600 \
             --clip-seconds 4 \
             --stride-seconds 2
           python subway_ai/scripts/finalize_corpus_metadata.py \
-            --manifest subway_ai/data/video_manifest.csv \
+            --manifest /tmp/subway-video-corpus/stage5_promoted_manifest.csv \
             --root /tmp/subway-video-corpus
           cat /tmp/subway-video-corpus/summary.json
-      - name: Stage 4 pixel-only action candidates and pseudo-label merge
+      - name: Recompute Stage 4 motion candidates on continuous source
         run: |
           set -euxo pipefail
-          if [ -f subway_ai/data/stage4_pilot_semantic.json ]; then
-            python subway_ai/scripts/infer_pseudo_actions.py \
-              --root /tmp/subway-video-corpus \
-              --semantic-labels subway_ai/data/stage4_pilot_semantic.json
-          else
-            python subway_ai/scripts/infer_pseudo_actions.py \
-              --root /tmp/subway-video-corpus
-          fi
+          python subway_ai/scripts/infer_pseudo_actions.py --root /tmp/subway-video-corpus
           cat /tmp/subway-video-corpus/stage4_summary.json
-          du -sh /tmp/subway-video-corpus || true
+      - name: Stage 6 build high-confidence action dataset
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/build_stage6_labels.py \
+            --root /tmp/subway-video-corpus \
+            --stage5-report /tmp/subway-video-corpus/stage5_source_report.json \
+            --min-confidence 0.80
+          cat /tmp/subway-video-corpus/stage6_summary.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: subway-video-corpus-stage4-pilot
+          name: subway-stages5-6-corpus
           path: |
+            /tmp/subway-video-corpus/stage5_source_report.json
+            /tmp/subway-video-corpus/stage5_promoted_manifest.csv
             /tmp/subway-video-corpus/summary.json
             /tmp/subway-video-corpus/index.jsonl
             /tmp/subway-video-corpus/contact-sheet.jpg
-            /tmp/subway-video-corpus/clips
             /tmp/subway-video-corpus/stage4_summary.json
             /tmp/subway-video-corpus/stage4_candidates.jsonl
             /tmp/subway-video-corpus/stage4_signals.csv
             /tmp/subway-video-corpus/stage4-contact-sheet.jpg
-            /tmp/subway-video-corpus/stage4_review_clips
-            /tmp/subway-video-corpus/pseudo_actions.jsonl
+            /tmp/subway-video-corpus/stage6_summary.json
+            /tmp/subway-video-corpus/stage6_actions.jsonl
+            /tmp/subway-video-corpus/stage6_examples
           retention-days: 1
           if-no-files-found: warn
