@@ -23,31 +23,37 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Fetch bootstrap from game origin
+      - name: Inspect game bundle capability checks
         run: |
           set -euxo pipefail
           mkdir -p /tmp/subway-source/js
           cat > source-probe.js <<'JS'
           const { chromium }=require('playwright'); const fs=require('fs');
+          const OUT='/tmp/subway-source';
+          function contexts(text,needles){
+            const low=text.toLowerCase(), out=[];
+            for(const needle0 of needles){const needle=needle0.toLowerCase();let p=0,n=0;while((p=low.indexOf(needle,p))>=0&&n<20){out.push({needle:needle0,pos:p,context:text.slice(Math.max(0,p-900),Math.min(text.length,p+needle.length+1400))});p+=needle.length;n++;}}
+            return out;
+          }
           (async()=>{
-            const b=await chromium.launch({headless:true});
-            const c=await b.newContext({viewport:{width:1280,height:720}}); const p=await c.newPage();
-            await p.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000});
-            await p.waitForTimeout(12000);
-            const frames=p.frames(); const g=frames.filter(f=>f.url().includes('.gdn.poki.com')).pop();
-            if(!g) throw new Error('game frame not found');
-            fs.writeFileSync('/tmp/subway-source/game-url.txt',g.url());
-            for(const path of ['js/boot.js','js/loading.js']){
-              const result=await g.evaluate(async path=>{const r=await fetch(path,{credentials:'same-origin'}); return {status:r.status,text:await r.text()}},path);
-              fs.writeFileSync('/tmp/subway-source/'+path,result.text); console.log(path,result.status,result.text.length);
+            const b=await chromium.launch({headless:true}); const c=await b.newContext({viewport:{width:1280,height:720}}); const p=await c.newPage();
+            await p.goto('https://poki.com/en/g/subway-surfers',{waitUntil:'domcontentloaded',timeout:120000}); await p.waitForTimeout(12000);
+            const g=p.frames().filter(f=>f.url().includes('.gdn.poki.com')).pop(); if(!g)throw new Error('game frame not found');
+            fs.writeFileSync(`${OUT}/game-url.txt`,g.url());
+            const paths=['js/boot.js','js/loading.js','js/dependencies.bundle.js','js/index.js'];
+            const needles=['This browser does not support WebGL','webgl','getContext','WebGLRenderingContext','WEBGL_debug_renderer_info','MAX_TEXTURE_SIZE','OES_','EXT_','supported','renderer','gpu'];
+            for(const path of paths){
+              const result=await g.evaluate(async path=>{const r=await fetch(path,{credentials:'same-origin'});return {status:r.status,text:await r.text()}},path);
+              const rec={path,status:result.status,length:result.text.length,matches:contexts(result.text,needles)};
+              fs.writeFileSync(`${OUT}/${path.replaceAll('/','__')}.json`,JSON.stringify(rec,null,2));
+              if(result.text.length<200000)fs.writeFileSync(`${OUT}/${path}`,result.text);
+              console.log(path,result.status,result.text.length,'matches',rec.matches.length);
             }
-            fs.writeFileSync('/tmp/subway-source/index.html',await g.content());
-            await b.close();
+            fs.writeFileSync(`${OUT}/index.html`,await g.content()); await b.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           JS
           node source-probe.js
-          grep -RniE 'webgl|WEBGL|gpu|renderer|extension|canvas|getContext|support|mobile|platform' /tmp/subway-source > /tmp/subway-source/relevant.txt || true
-          cat /tmp/subway-source/relevant.txt
+          for f in /tmp/subway-source/js__*.json; do echo "===== $f ====="; grep -n -E 'does not support WebGL|webgl|getContext|WebGLRenderingContext|renderer|MAX_TEXTURE' "$f" | head -80 || true; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
