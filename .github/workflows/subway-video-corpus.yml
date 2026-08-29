@@ -1,0 +1,53 @@
+name: Subway Surfers Video Corpus Pilot
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - 'subway_ai/data/video_manifest.csv'
+      - 'subway_ai/scripts/prepare_video_corpus.py'
+      - 'subway_ai/video-corpus-trigger.txt'
+      - '.github/workflows/subway-video-corpus.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install corpus tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install 'yt-dlp>=2025.8.22' numpy pillow
+      - name: Build canonical pilot corpus
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/subway-video-corpus
+          python subway_ai/scripts/prepare_video_corpus.py \
+            --manifest subway_ai/data/video_manifest.csv \
+            --out /tmp/subway-video-corpus \
+            --max-sources 2 \
+            --max-seconds 180 \
+            --clip-seconds 4 \
+            --stride-seconds 2
+          cat /tmp/subway-video-corpus/summary.json
+          du -sh /tmp/subway-video-corpus || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-video-corpus-pilot
+          path: |
+            /tmp/subway-video-corpus/summary.json
+            /tmp/subway-video-corpus/index.jsonl
+            /tmp/subway-video-corpus/contact-sheet.jpg
+            /tmp/subway-video-corpus/clips
+          retention-days: 1
+          if-no-files-found: warn
