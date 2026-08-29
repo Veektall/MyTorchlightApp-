@@ -23,6 +23,7 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm install playwright@1.55.0
           npx playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg
       - name: Boot official Subway Surfers and exercise controls
         run: |
           set -euxo pipefail
