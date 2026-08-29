@@ -24,11 +24,11 @@ jobs:
       - name: Download instrumented authentic build
         uses: actions/download-artifact@v4
         with:
-          name: pixel-subway-instrumented-build-v2
+          name: pixel-subway-instrumented-build-v3
           path: /tmp/pss-instrumented
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: Veektall/MyTorchlightApp-
-          run-id: 33245921167
+          run-id: 33246040555
 
       - name: Prepare capture runtime
         run: |
@@ -105,7 +105,6 @@ jobs:
               except OSError:
                   return False
 
-          # Xvfb is 1280x720; the authentic 1000x600 MonoGame window is centered.
           mon={'left':140,'top':60,'width':1000,'height':600}
           start=time.time(); last_jump=-10.0; sample=0
           sct=mss.mss(); max_wall=105.0
@@ -118,7 +117,6 @@ jobs:
                       print('STOP dead score',st['score']); break
                   ttc=max(-2.0,min(5.0,(st['hurdle_x']-st['player_x'])/max(1.0,st['speed'])))
                   grounded=abs(st['velocity_y']) < 0.05
-                  # Same causal policy across all speeds: jump while grounded around 0.8s TTC.
                   jump_label=int(grounded and 0.62 <= ttc <= 0.92)
                   sent=0; now=time.time()
                   if jump_label and now-last_jump>0.35 and send_action('jump'):
@@ -161,7 +159,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pixel-subway-visual-dataset-v2
+          name: pixel-subway-visual-dataset-v3
           path: /tmp/pss-dataset
           if-no-files-found: error
           retention-days: 1
