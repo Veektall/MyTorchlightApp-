@@ -23,11 +23,11 @@ jobs:
       - name: Download corrected authentic visual dataset
         uses: actions/download-artifact@v4
         with:
-          name: pixel-subway-visual-dataset-v2
+          name: pixel-subway-visual-dataset-v3
           path: /tmp/pss-dataset
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: Veektall/MyTorchlightApp-
-          run-id: 33245961874
+          run-id: 33246073827
 
       - name: Install CPU training dependencies
         run: |
@@ -71,7 +71,6 @@ jobs:
               for q in (p,r):
                   im=Image.open(ROOT/'frames'/q['sample']).convert('RGB')
                   arr=np.asarray(im,dtype=np.float32)/255.0
-                  # Remove score/HUD; keep causal playfield containing player + obstacle.
                   arr=arr[38:120,:,:]
                   t=torch.from_numpy(arr).permute(2,0,1)
                   t=F.interpolate(t.unsqueeze(0),size=(64,128),mode='bilinear',align_corners=False).squeeze(0)
@@ -83,7 +82,6 @@ jobs:
               def __len__(self): return len(self.x)
               def __getitem__(self,i):
                   p,r,_=self.x[i]; x=load_pair(p,r); y=torch.tensor(float(r['jump_label']))
-                  # Causal coordinates available only as training/eval targets, never policy inputs.
                   ttc=np.clip(float(r['ttc']),-1,5)/5.0
                   speed=(float(r['speed'])-min(unique))/max(1.0,max(unique)-min(unique))
                   py=float(r['player_y'])/600.0
@@ -105,7 +103,6 @@ jobs:
                   return self.head(z).squeeze(1),z
 
           def augment(x):
-              # Nuisance-only appearance changes. Same underlying causal scene.
               B=x.shape[0]
               gain=(.72+.56*torch.rand(B,1,1,1,device=x.device))
               bias=(-.10+.20*torch.rand(B,1,1,1,device=x.device))
@@ -189,7 +186,7 @@ jobs:
       - name: Upload policy experiment
         uses: actions/upload-artifact@v4
         with:
-          name: pixel-subway-policy-experiment
+          name: pixel-subway-policy-experiment-v3
           path: /tmp/pss-train
           if-no-files-found: error
           retention-days: 1
