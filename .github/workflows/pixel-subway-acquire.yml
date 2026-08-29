@@ -64,7 +64,7 @@ jobs:
             const fileText = page.getByText(label, {exact:false}).first();
             await fileText.waitFor({state:'visible'});
 
-            let row = fileText.locator('xpath=ancestor::*[contains(@class,"upload")][1]');
+            let row = fileText.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " upload ")][1]');
             if (await row.count() === 0) row = fileText.locator('xpath=ancestor::*[self::div or self::li][.//a or .//button][1]');
 
             let button = row.getByRole('button', {name:/download/i}).first();
