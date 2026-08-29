@@ -1,4 +1,4 @@
-name: Subway Surfers Stages 5-6 Corpus
+name: Subway Surfers Stages 5-8 Pipeline
 
 on:
   push:
@@ -10,6 +10,9 @@ on:
       - 'subway_ai/scripts/prepare_video_corpus.py'
       - 'subway_ai/scripts/finalize_corpus_metadata.py'
       - 'subway_ai/scripts/build_stage6_exact_labels.py'
+      - 'subway_ai/scripts/temporal_policy_model.py'
+      - 'subway_ai/scripts/train_stage7_temporal_encoder.py'
+      - 'subway_ai/scripts/train_stage8_imitation_policy.py'
       - 'subway_ai/video-corpus-trigger.txt'
       - '.github/workflows/subway-video-corpus.yml'
 
@@ -19,7 +22,7 @@ permissions:
 jobs:
   build-corpus:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
@@ -30,12 +33,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install official-game and corpus runtime
+      - name: Install official-game and training runtime
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg mesa-utils libgl1-mesa-dri xvfb
           python -m pip install --upgrade pip
           pip install numpy pillow opencv-python-headless
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           npm init -y >/dev/null 2>&1
           npm install --no-save playwright@1.55.0 sharp@0.34.3
           npx playwright install --with-deps chromium
@@ -46,8 +50,7 @@ jobs:
           mkdir -p /tmp/subway-stage56-controlled /tmp/subway-video-corpus/raw
           xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
             node subway_ai/scripts/collect_stage5_controlled.js /tmp/subway-stage56-controlled
-          cp /tmp/subway-stage56-controlled/official_live_controlled_2026.mp4 \
-             /tmp/subway-video-corpus/raw/official_live_controlled_2026.mp4
+          cp /tmp/subway-stage56-controlled/official_live_controlled_2026.mp4 /tmp/subway-video-corpus/raw/official_live_controlled_2026.mp4
           cp /tmp/subway-stage56-controlled/exact_actions.json /tmp/subway-video-corpus/exact_actions.json
           cp /tmp/subway-stage56-controlled/collector_summary.json /tmp/subway-video-corpus/collector_summary.json
           cp /tmp/subway-stage56-controlled/runtime.json /tmp/subway-video-corpus/runtime.json
@@ -56,21 +59,13 @@ jobs:
             --manifest subway_ai/data/video_manifest.csv \
             --source-id official_live_controlled_2026 \
             --out /tmp/subway-video-corpus
-          cat /tmp/subway-video-corpus/stage5_source_report.json
       - name: Canonicalize Stage 5 source
         run: |
           set -euxo pipefail
           python subway_ai/scripts/prepare_video_corpus.py \
             --manifest /tmp/subway-video-corpus/stage5_promoted_manifest.csv \
-            --out /tmp/subway-video-corpus \
-            --max-sources 1 \
-            --max-seconds 120 \
-            --clip-seconds 4 \
-            --stride-seconds 2
-          python subway_ai/scripts/finalize_corpus_metadata.py \
-            --manifest /tmp/subway-video-corpus/stage5_promoted_manifest.csv \
-            --root /tmp/subway-video-corpus
-          cat /tmp/subway-video-corpus/summary.json
+            --out /tmp/subway-video-corpus --max-sources 1 --max-seconds 120 --clip-seconds 4 --stride-seconds 2
+          python subway_ai/scripts/finalize_corpus_metadata.py --manifest /tmp/subway-video-corpus/stage5_promoted_manifest.csv --root /tmp/subway-video-corpus
       - name: Stage 6 build exact action calibration dataset
         run: |
           set -euxo pipefail
@@ -80,10 +75,20 @@ jobs:
             --video /tmp/subway-video-corpus/normalized/official_live_controlled_2026.mp4 \
             --source-id official_live_controlled_2026
           cat /tmp/subway-video-corpus/stage6_summary.json
+      - name: Stage 7 pretrain temporal visual encoder
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/train_stage7_temporal_encoder.py --root /tmp/subway-video-corpus --epochs 24
+          cat /tmp/subway-video-corpus/stage7_summary.json
+      - name: Stage 8 train balanced imitation policy
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/train_stage8_imitation_policy.py --root /tmp/subway-video-corpus --epochs 36
+          cat /tmp/subway-video-corpus/stage8_summary.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: subway-stages5-6-controlled
+          name: subway-stages5-8-controlled
           path: |
             /tmp/subway-video-corpus/collector_summary.json
             /tmp/subway-video-corpus/runtime.json
@@ -95,7 +100,11 @@ jobs:
             /tmp/subway-video-corpus/contact-sheet.jpg
             /tmp/subway-video-corpus/stage6_summary.json
             /tmp/subway-video-corpus/stage6_actions.jsonl
+            /tmp/subway-video-corpus/stage7_summary.json
+            /tmp/subway-video-corpus/stage7_temporal_encoder.pt
+            /tmp/subway-video-corpus/stage8_summary.json
+            /tmp/subway-video-corpus/stage8_predictions.csv
+            /tmp/subway-video-corpus/stage8_imitation_policy.pt
             /tmp/subway-video-corpus/stage6_exact_examples
-            /tmp/subway-stage56-controlled/episode-*-actions.json
           retention-days: 2
           if-no-files-found: warn
