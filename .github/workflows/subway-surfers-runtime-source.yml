@@ -1,0 +1,33 @@
+name: Subway Surfers Runtime Source Probe
+
+on:
+  push:
+    branches: [pixel-subway-acquire]
+    paths:
+      - 'subway-surfers-source-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch public runtime bootstrap files
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/subway-source
+          BASE='https://5dd312fa-015f-11ea-ad56-9cb6d0d995f7.gdn.poki.com/b05f1bb8-3159-4c02-8066-4dc1327308e0'
+          for f in index.html js/boot.js js/loading.js; do
+            mkdir -p "/tmp/subway-source/$(dirname "$f")"
+            curl -fL --retry 3 "$BASE/$f" -o "/tmp/subway-source/$f"
+          done
+          grep -RniE 'webgl|WEBGL|gpu|renderer|extension|canvas|getContext|support' /tmp/subway-source > /tmp/subway-source/relevant.txt || true
+          cat /tmp/subway-source/relevant.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subway-surfers-runtime-source-probe
+          path: /tmp/subway-source
+          retention-days: 1
