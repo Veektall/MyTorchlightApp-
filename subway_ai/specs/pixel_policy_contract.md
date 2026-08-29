@@ -7,8 +7,8 @@ Build an agent that plays the official Subway Surfers game from the same visual 
 
 **Input**
 - Only rendered RGB game pixels.
-- Canonical observation: 8 consecutive RGB frames sampled from a 15 fps stream.
-- Canonical frame size: 360 x 640 pixels (width x height).
+- Canonical live observation: 8 consecutive RGB frames sampled from a 15 fps stream.
+- Live policy frame size: 640 x 360 pixels (width x height), matching the official browser game's landscape canvas.
 - No DOM, JavaScript objects, internal coordinates, collision flags, obstacle lists, score variables, or game telemetry may enter the evaluated policy.
 
 **Output action space**
@@ -29,18 +29,23 @@ The browser/runtime is an eye-and-hand transport layer only: capture pixels, del
 ## Environment-controller boundary
 Menu/tutorial/death/restart automation is outside the gameplay policy. It must itself rely on pixels or ordinary UI interaction and must not leak privileged game state into the policy.
 
-## Canonical dataset contract
-- Video: RGB, 360x640, 15 fps, H.264 MP4, no audio.
+## Canonical offline dataset contract
+- RGB, 15 fps, H.264 MP4, no audio.
+- Automatically locate the temporally active gameplay viewport before normalization; stable browser chrome, borders, and sidebars are excluded when detectable.
+- Preserve source gameplay orientation and geometry rather than stretch it:
+  - landscape bucket: 640 x 360
+  - portrait bucket: 360 x 640
 - Training clip: 4.0 seconds / 60 frames.
 - Default clip stride: 2.0 seconds.
 - Preserve aspect ratio; pad rather than stretch.
-- Remove stable black borders when detected.
-- Every clip must carry source ID, source time range, crop, motion/QC metrics, and reuse status.
+- Every clip must carry source ID, source time range, detected crop/crop method, orientation, normalized dimensions, motion/QC metrics, and reuse status.
+
+The pretraining encoder may consume both orientation buckets. The final closed-loop policy is evaluated only on the 640 x 360 live browser observation contract.
 
 ## Success criteria for Stages 1-3
 1. This interface is frozen and versioned.
-2. A source manifest contains a mix of long competent play, high-score candidates, and failure/collision candidates.
+2. A source manifest contains reusable footage plus high-score and failure/collision discovery candidates with explicit provenance/reuse status.
 3. An automated ingestion pipeline can produce canonical clips plus a machine-readable index and visual QC contact sheet from approved sources.
 
 ## Version
-`pixel-policy-contract-v1` — frozen for the first video-pretraining experiment.
+`pixel-policy-contract-v1.1` — corrected after validating the real browser viewport; frozen for the first video-pretraining experiment.
