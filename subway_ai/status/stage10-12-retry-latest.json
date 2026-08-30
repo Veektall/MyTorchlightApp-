@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage10-12-frozen-retry",
-  "run_id": "33311317836",
-  "head_sha": "8dbf7ec8182b3cdc2b39423faa8f193eb58480e0",
+  "run_id": "33311502901",
+  "head_sha": "6aaa7892a1ff0cfed1011c3c3011a4cdc703e2ed",
   "frozen_stage10_corpus_source_run": "33285857731",
   "stage10_collection": {
     "stage": "10-semantic-pixel-teacher-collection-v1",
@@ -71,15 +71,214 @@
     "privileged_game_state_used": false,
     "accepted": true
   },
-  "stage10_policy": null,
-  "stage11": null,
-  "stage12": null,
-  "steps": {
-    "stage10": "failure",
-    "stage11": "skipped",
-    "stage12": "skipped"
+  "stage10_policy": {
+    "stage": "10B-semantic-imitation-policy-v5",
+    "examples_total": 427,
+    "train_examples": 319,
+    "validation_examples": 108,
+    "validation_episode_ids": [
+      "official_stage10_ep04",
+      "official_stage10_ep08"
+    ],
+    "best_epoch": 27,
+    "class_counts": {
+      "left": 109,
+      "right": 110,
+      "stay": 150,
+      "roll": 30,
+      "jump": 28
+    },
+    "accuracy": 0.5463,
+    "balanced_accuracy": 0.6012,
+    "majority_accuracy": 0.3426,
+    "per_class_recall": {
+      "stay": 0.3514,
+      "left": 0.6429,
+      "right": 0.6786,
+      "jump": 1.0,
+      "roll": 0.3333
+    },
+    "mean_prediction_confidence": 0.4862,
+    "confusion_matrix": [
+      [
+        13,
+        8,
+        7,
+        6,
+        3
+      ],
+      [
+        7,
+        18,
+        0,
+        1,
+        2
+      ],
+      [
+        1,
+        1,
+        19,
+        4,
+        3
+      ],
+      [
+        0,
+        0,
+        0,
+        6,
+        0
+      ],
+      [
+        1,
+        1,
+        1,
+        3,
+        3
+      ]
+    ],
+    "policy_architecture": "12 pixels-derived lane/height/motion hazard features -> 32-hidden MLP -> five actions",
+    "temporal_encoder_checkpoint_validated_separately": true,
+    "temporal_encoder_used_by_action_head": false,
+    "reason_temporal_not_in_action_head": "held-out rare-maneuver recall was materially better with compact local pixel hazards than the global temporal hidden state",
+    "acceptance_gate": {
+      "accuracy_must_exceed_majority": true,
+      "balanced_accuracy_min": 0.4,
+      "maneuver_recall_min": 0.3,
+      "stay_recall_min": 0.25
+    },
+    "label_origin": "exact_browser_input_from_semantic_pixel_teacher",
+    "privileged_game_state_used": false,
+    "accepted": true
   },
-  "stage10_completed": false,
+  "stage11": {
+    "stage": "11-official-closed-loop-benchmark-v1",
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "official_game": "https://poki.com/en/g/subway-surfers",
+    "episodes_per_policy": 2,
+    "max_seconds_per_episode": 28.0,
+    "results": [
+      {
+        "policy": "stay",
+        "episode": 1,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "stay",
+        "episode": 2,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "always_jump",
+        "episode": 1,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "always_jump",
+        "episode": 2,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "corridor_cv",
+        "episode": 1,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "corridor_cv",
+        "episode": 2,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "learned",
+        "episode": 1,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "policy": "learned",
+        "episode": 2,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      }
+    ],
+    "aggregate": {
+      "stay": {
+        "valid_episodes": 0,
+        "mean_survival_sec": null,
+        "median_survival_sec": null,
+        "deaths": 0,
+        "mean_actions_per_sec": null
+      },
+      "always_jump": {
+        "valid_episodes": 0,
+        "mean_survival_sec": null,
+        "median_survival_sec": null,
+        "deaths": 0,
+        "mean_actions_per_sec": null
+      },
+      "corridor_cv": {
+        "valid_episodes": 0,
+        "mean_survival_sec": null,
+        "median_survival_sec": null,
+        "deaths": 0,
+        "mean_actions_per_sec": null
+      },
+      "learned": {
+        "valid_episodes": 0,
+        "mean_survival_sec": null,
+        "median_survival_sec": null,
+        "deaths": 0,
+        "mean_actions_per_sec": null
+      }
+    },
+    "benchmark_complete": false,
+    "learned_beats_both_cheap_baselines": false,
+    "competence_claim": false,
+    "score_distance_note": "Not read from game internals; unavailable here rather than violating the pixel-policy contract."
+  },
+  "stage12": {
+    "stage": "12-pixel-policy-failure-buffer-v1",
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "official_game": "https://poki.com/en/g/subway-surfers",
+    "requested_episodes": 3,
+    "valid_episodes": 0,
+    "episodes": [
+      {
+        "episode_id": "stage12-selfplay-01",
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "episode_id": "stage12-selfplay-02",
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      },
+      {
+        "episode_id": "stage12-selfplay-03",
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      }
+    ],
+    "failure_examples_total": 0,
+    "failure_examples_by_reason": {},
+    "retraining_manifest": "stage12_failure_examples.jsonl",
+    "capture_rule": "low-confidence or pixel-teacher disagreement, plus final ~2 seconds before pixel-detected death",
+    "post_action_pixels_in_saved_examples": false,
+    "privileged_game_state_used": false,
+    "ready_for_next_training_cycle": false,
+    "completed": false
+  },
+  "steps": {
+    "stage10": "success",
+    "stage11": "failure",
+    "stage12": "failure"
+  },
+  "stage10_completed": true,
   "stage11_completed": false,
   "stage12_completed": false,
   "learned_policy_competence_claim": false,
