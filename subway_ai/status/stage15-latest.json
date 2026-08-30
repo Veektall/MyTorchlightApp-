@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33315822935",
-  "head_sha": "e55556958845d8a58f35a01ea86644a368fdc3d1",
+  "run_id": "33316046303",
+  "head_sha": "18a4ba01e91fb80bc9eb579f14e96493f406ecef",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
@@ -17,8 +17,8 @@
         "startup": {
           "ok": false,
           "reason": "no_verified_endless_play_or_pixel_score_lock",
-          "tracks": 0,
-          "motion_median": 0.243791
+          "tracks": 1,
+          "motion_median": 0.2296
         },
         "reason": "startup_or_score_lock_failed",
         "video_file": "stay_ep1.webm"
