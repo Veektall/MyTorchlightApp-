@@ -1,0 +1,87 @@
+{
+  "workflow": "subway-stage10-12-frozen-retry",
+  "run_id": "33311317836",
+  "head_sha": "8dbf7ec8182b3cdc2b39423faa8f193eb58480e0",
+  "frozen_stage10_corpus_source_run": "33285857731",
+  "stage10_collection": {
+    "stage": "10-semantic-pixel-teacher-collection-v1",
+    "requested_episodes": 8,
+    "accepted_episodes": 8,
+    "examples_total": 427,
+    "action_counts": {
+      "stay": 150,
+      "left": 109,
+      "right": 110,
+      "jump": 28,
+      "roll": 30
+    },
+    "episode_coverage_by_action": {
+      "stay": 8,
+      "left": 8,
+      "right": 8,
+      "jump": 7,
+      "roll": 8
+    },
+    "acceptance_contract": {
+      "minimum_episodes": 6,
+      "minimum_examples_per_class": 25,
+      "minimum_episode_coverage_per_class": 4
+    },
+    "accepted": true,
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "input_shape": [
+      8,
+      54,
+      96,
+      3
+    ],
+    "post_action_pixels": false,
+    "decisions_use_privileged_game_state": false,
+    "exact_key_logs_used_as_labels": true,
+    "teacher": "pixel danger + upper/lower risk anomalies + prior-input-derived lane only"
+  },
+  "stage10_temporal": {
+    "stage": "10A-masked-temporal-reconstruction-v5",
+    "train_examples": 319,
+    "validation_examples": 108,
+    "validation_episode_ids": [
+      "official_stage10_ep04",
+      "official_stage10_ep08"
+    ],
+    "best_epoch": 7,
+    "masked_frame_index": 4,
+    "objective": "learned residual over two-neighbour interpolation for a masked middle frame",
+    "target_representation": "fixed 6x10 RGB spatial grid",
+    "validation": {
+      "model_coarse_l1": 0.064149,
+      "interpolation_coarse_l1": 0.064614,
+      "persistence_coarse_l1": 0.069831,
+      "interpolation_raw_pixel_l1": 0.102699,
+      "persistence_raw_pixel_l1": 0.108477
+    },
+    "raw_interpolation_improvement_over_persistence": 0.0533,
+    "learned_coarse_improvement_over_persistence": 0.0814,
+    "learned_residual_improvement_over_interpolation": 0.0072,
+    "acceptance_gate": {
+      "raw_interpolation_improvement_over_persistence_min": 0.03,
+      "learned_coarse_improvement_over_persistence_min": 0.08,
+      "learned_model_may_not_degrade_interpolation_by_more_than": 0.01
+    },
+    "policy_labels_used": false,
+    "privileged_game_state_used": false,
+    "accepted": true
+  },
+  "stage10_policy": null,
+  "stage11": null,
+  "stage12": null,
+  "steps": {
+    "stage10": "failure",
+    "stage11": "skipped",
+    "stage12": "skipped"
+  },
+  "stage10_completed": false,
+  "stage11_completed": false,
+  "stage12_completed": false,
+  "learned_policy_competence_claim": false,
+  "all_requested_stages_completed": false
+}
