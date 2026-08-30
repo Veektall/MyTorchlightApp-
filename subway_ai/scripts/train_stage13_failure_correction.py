@@ -38,13 +38,17 @@ def main():
     random.seed(113);np.random.seed(113);torch.manual_seed(113);torch.set_num_threads(max(1,min(4,torch.get_num_threads())))
     base=Path(args.base_root);fail=Path(args.failure_root);out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
     rows=[json.loads(x) for x in (base/'stage10_examples.jsonl').read_text().splitlines() if x.strip()]
-    fr=[json.loads(x) for x in (fail/'stage12_failure_examples.jsonl').read_text().splitlines() if x.strip() and json.loads(x).get('eligible_for_retraining')]
+    fr=[]
+    for line in (fail/'stage12_failure_examples.jsonl').read_text().splitlines():
+        if not line.strip(): continue
+        r=json.loads(line)
+        if r.get('eligible_for_retraining'): fr.append(r)
     if len(fr)<80: raise SystemExit(f'insufficient Stage-12 correction buffer: {len(fr)}')
     train_rows=[r for r in rows if r['episode_id'] not in VAL_EPISODES]; val_rows=[r for r in rows if r['episode_id'] in VAL_EPISODES]
     def load_base(rs):
         x=np.stack([read_rgb8(base/r['example_path']) for r in rs]);y=np.array([ACTION_TO_ID[r['action']] for r in rs],dtype=np.int64);return x,y
     xtr,ytr=load_base(train_rows);xv,yv=load_base(val_rows)
-    xf=np.stack([read_rgb8(f/r['example_path']) for r in fr]);yf=np.array([ACTION_TO_ID[r['teacher_action']] for r in fr],dtype=np.int64)
+    xf=np.stack([read_rgb8(fail/r['example_path']) for r in fr]);yf=np.array([ACTION_TO_ID[r['teacher_action']] for r in fr],dtype=np.int64)
     ck=torch.load(args.checkpoint,map_location='cpu');model=Stage10Policy();model.load_state_dict(ck['model'])
     before_val=metrics(model,xv,yv);before_fail=metrics(model,xf,yf)
     x=np.concatenate([xtr,xf],0);y=np.concatenate([ytr,yf],0);source=np.concatenate([np.zeros(len(xtr),dtype=np.int64),np.ones(len(xf),dtype=np.int64)])
