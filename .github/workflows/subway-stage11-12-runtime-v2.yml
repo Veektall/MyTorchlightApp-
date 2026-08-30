@@ -1,0 +1,113 @@
+name: Subway Stages 11-12 Runtime v2
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - '.github/workflows/subway-stage11-12-runtime-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  stage11-12:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      STAGE10_SOURCE_RUN: '33311502901'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: subway-video-corpus
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install live-game runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri
+          python -m pip install --upgrade pip
+          pip install numpy pillow
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Download accepted Stage-10 policy checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: subway-stages10-12-frozen-retry
+          path: /tmp/stage10-accepted
+          github-token: ${{ github.token }}
+          run-id: 33311502901
+      - name: Locate checkpoint
+        id: ckpt
+        run: |
+          CKPT=$(find /tmp/stage10-accepted -name stage10_imitation_policy.pt -print -quit)
+          test -n "$CKPT"
+          echo "path=$CKPT" >> "$GITHUB_OUTPUT"
+          mkdir -p /tmp/subway-stage11-v2 /tmp/subway-stage12-v2
+      - name: Stage 11 fresh official-game closed-loop benchmark v2
+        id: s11
+        continue-on-error: true
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/evaluate_stage11_closed_loop_v2.py --checkpoint '${{ steps.ckpt.outputs.path }}' --out /tmp/subway-stage11-v2 --episodes 2 --max-seconds 28
+      - name: Stage 12 fresh learned self-play failure buffer v2
+        id: s12
+        if: steps.s11.outcome == 'success'
+        continue-on-error: true
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/collect_stage12_failure_buffer_v2.py --checkpoint '${{ steps.ckpt.outputs.path }}' --out /tmp/subway-stage12-v2 --episodes 3 --max-seconds 32
+      - name: Publish durable Stage 11-12 v2 status
+        if: always()
+        env:
+          S11: ${{ steps.s11.outcome }}
+          S12: ${{ steps.s12.outcome }}
+        run: |
+          mkdir -p subway_ai/status
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          def read(p):
+              p=Path(p)
+              if not p.exists(): return None
+              try:return json.loads(p.read_text())
+              except Exception as e:return {'parse_error':str(e)}
+          s11=read('/tmp/subway-stage11-v2/stage11_summary.json')
+          s12=read('/tmp/subway-stage12-v2/stage12_summary.json')
+          out={
+            'workflow':'subway-stage11-12-runtime-v2','run_id':os.getenv('GITHUB_RUN_ID'),'head_sha':os.getenv('GITHUB_SHA'),
+            'stage10_source_run':os.getenv('STAGE10_SOURCE_RUN'),'steps':{'stage11':os.getenv('S11'),'stage12':os.getenv('S12')},
+            'stage11':s11,'stage12':s12,
+            'stage11_completed':bool(s11 and s11.get('benchmark_complete')),
+            'stage12_completed':bool(s12 and s12.get('completed')),
+            'learned_policy_competence_claim':bool(s11 and s11.get('competence_claim'))
+          }
+          out['all_requested_stages_completed']=out['stage11_completed'] and out['stage12_completed']
+          Path('subway_ai/status/stage11-12-runtime-v2-latest.json').write_text(json.dumps(out,indent=2))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add subway_ai/status/stage11-12-runtime-v2-latest.json
+          git commit -m 'status: publish Stage 11-12 runtime v2 result' || true
+          git push origin HEAD:subway-video-corpus
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stages11-12-runtime-v2
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            /tmp/subway-stage11-v2/stage11_summary.json
+            /tmp/subway-stage12-v2/stage12_summary.json
+            /tmp/subway-stage12-v2/stage12_failure_examples.jsonl
+            /tmp/subway-stage12-v2/failure_examples
+      - name: Enforce Stage 11-12 completion
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('subway_ai/status/stage11-12-runtime-v2-latest.json'))
+          raise SystemExit(0 if p['all_requested_stages_completed'] else 41)
+          PY
