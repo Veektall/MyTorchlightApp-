@@ -74,7 +74,7 @@ function chooseSemanticAction(img, prev, lane, t, lastAt, stats) {
     action = best < lane ? 'left' : 'right'; reason='adjacent_lane_visibly_safer';
   } else if (t-(lastAt.roll||-99)>.90 && zu>.35 && zu>zl+.18) {
     action='roll'; reason='upper_lane_risk_anomaly';
-  } else if (t-(lastAt.jump||-99)>.72 && zl>.35 && zl>zu+.10) {
+  } else if (t-(lastAt.jump||-99)>.72 && zl>.05 && zl>zu) {
     action='jump'; reason='lower_lane_risk_anomaly';
   } else if (t-(lastAt.jump||-99)>.80 && cur > median(d)+.022) {
     action='jump'; reason='current_lane_risk_spike';
