@@ -59,7 +59,7 @@ class CorridorPolicy:
         action='stay'
         if lateral and best!=self.lane and cur-d[best]>.014:action='left' if best<self.lane else 'right'
         elif t-self.last.get('roll',-99)>.90 and zu>.35 and zu>zl+.18:action='roll'
-        elif t-self.last.get('jump',-99)>.72 and zl>.35 and zl>zu+.10:action='jump'
+        elif t-self.last.get('jump',-99)>.72 and zl>.05 and zl>zu:action='jump'
         elif t-self.last.get('jump',-99)>.80 and cur>float(np.median(d))+.022:action='jump'
         self.last[action]=t
         if action=='left':self.lane=max(0,self.lane-1)
