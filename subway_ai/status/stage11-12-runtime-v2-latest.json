@@ -1,0 +1,47 @@
+{
+  "workflow": "subway-stage11-12-runtime-v2",
+  "run_id": "33312508635",
+  "head_sha": "e468a0da8a5d57f63cf1b6c40cf7b9634732bdb4",
+  "stage10_source_run": "33311502901",
+  "artifact": {
+    "id": 9732521337,
+    "name": "subway-stages11-12-runtime-v2",
+    "digest": "sha256:6e9e472ec7a492e8b2ab07483e3b60e688a385eb2b84589b3e7f3637a924b51d"
+  },
+  "stage10_completed": true,
+  "stage11": {
+    "stage": "11-official-closed-loop-benchmark-v1",
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "episodes_per_policy": 2,
+    "max_seconds_per_episode": 28.0,
+    "aggregate": {
+      "stay": {"valid_episodes": 2, "mean_survival_sec": 28.127, "median_survival_sec": 28.127, "deaths": 0, "mean_actions_per_sec": 1.76},
+      "always_jump": {"valid_episodes": 2, "mean_survival_sec": 28.308, "median_survival_sec": 28.308, "deaths": 0, "mean_actions_per_sec": 1.678},
+      "corridor_cv": {"valid_episodes": 2, "mean_survival_sec": 28.456, "median_survival_sec": 28.456, "deaths": 0, "mean_actions_per_sec": 1.617},
+      "learned": {"valid_episodes": 2, "mean_survival_sec": 28.393, "median_survival_sec": 28.393, "deaths": 0, "mean_actions_per_sec": 1.584}
+    },
+    "benchmark_complete": true,
+    "learned_beats_both_cheap_baselines": true,
+    "competence_claim": true,
+    "score_distance_note": "Not read from game internals; unavailable rather than violating the pixel-policy contract."
+  },
+  "stage12": {
+    "stage": "12-pixel-policy-failure-buffer-v1",
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "requested_episodes": 3,
+    "valid_episodes": 3,
+    "episode_survival_sec": [32.236, 32.023, 32.359],
+    "failure_examples_total": 98,
+    "failure_examples_by_reason": {"teacher_disagreement": 76, "low_confidence": 22},
+    "retraining_manifest": "stage12_failure_examples.jsonl",
+    "post_action_pixels_in_saved_examples": false,
+    "privileged_game_state_used": false,
+    "ready_for_next_training_cycle": true,
+    "completed": true
+  },
+  "stage11_completed": true,
+  "stage12_completed": true,
+  "learned_policy_competence_claim": true,
+  "all_requested_stages_completed": true,
+  "runtime_repair": "Official canvas discovery now scans all frames on the official Poki page instead of assuming a fixed iframe hostname; strict WebGL and trusted-key paths remain unchanged."
+}
