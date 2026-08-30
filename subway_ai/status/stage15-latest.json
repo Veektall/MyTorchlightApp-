@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33316385505",
-  "head_sha": "8db16b81a9a11cc5dbc982377b458930c53719ab",
+  "run_id": "33318019869",
+  "head_sha": "271e92b65c046b3a57ea29d1f22ed5c67139a036",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
@@ -16,17 +16,22 @@
         "valid": false,
         "startup": {
           "ok": false,
-          "reason": "no_verified_endless_play_or_pixel_score_lock",
-          "tracks": 1,
-          "valid_score_reads": 3,
-          "recent_track_values": [
-            [
-              24,
-              43,
-              43
-            ]
+          "reason": "tutorial_not_cleared_or_score_not_advancing",
+          "tutorial_directions_seen": [],
+          "tutorial_events": [],
+          "last_prompt_direction": null,
+          "last_ocr_text": "os wd\n\nx1 | 000043\n\n0\u00ae@\n\nmie\n\n\u00bb, |\n\nen\n\nim\n",
+          "valid_score_reads": 7,
+          "recent_score_values": [
+            24,
+            43,
+            43,
+            43,
+            43,
+            43,
+            43
           ],
-          "motion_median": 0.190238
+          "motion_median": 0.162493
         },
         "reason": "startup_or_score_lock_failed",
         "video_file": "stay_ep1.webm"
