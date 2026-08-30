@@ -1,0 +1,105 @@
+name: Subway Surfers Stages 10-12 Pixel Policy
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - 'subway_ai/scripts/collect_stage10_semantic_teacher.js'
+      - 'subway_ai/scripts/stage10_v4_model.py'
+      - 'subway_ai/scripts/train_stage10_v4.py'
+      - 'subway_ai/scripts/evaluate_stage11_closed_loop.py'
+      - 'subway_ai/scripts/collect_stage12_failure_buffer.py'
+      - '.github/workflows/subway-stage10-12.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subway-stage10-12-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage10-through-12:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      STAGE10_EPISODES: '8'
+      STAGE10_EPISODE_SECONDS: '42'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install official-game and model runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg mesa-utils libgl1-mesa-dri xvfb
+          python -m pip install --upgrade pip
+          pip install numpy pillow torch --index-url https://download.pytorch.org/whl/cpu
+          pip install playwright==1.55.0
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 sharp@0.34.3
+          npx playwright install --with-deps chromium
+          python -m playwright install chromium
+      - name: Stage 10 collect direct-canvas semantic pixel-teacher episodes
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/subway-stage10-semantic /tmp/subway-stage11 /tmp/subway-stage12
+          mkdir -p /tmp/subway-stage10-semantic /tmp/subway-stage11 /tmp/subway-stage12
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
+            node subway_ai/scripts/collect_stage10_semantic_teacher.js /tmp/subway-stage10-semantic
+          cat /tmp/subway-stage10-semantic/stage10_collection_summary.json
+      - name: Stage 10 temporal pretraining and held-out semantic imitation gate
+        run: |
+          set -euxo pipefail
+          python subway_ai/scripts/train_stage10_v4.py \
+            --root /tmp/subway-stage10-semantic \
+            --pretrain-epochs 18 \
+            --policy-epochs 32
+          cat /tmp/subway-stage10-semantic/stage10_temporal_summary.json
+          cat /tmp/subway-stage10-semantic/stage10_policy_summary.json
+      - name: Stage 11 closed-loop official-game benchmark
+        run: |
+          set -euxo pipefail
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
+            python subway_ai/scripts/evaluate_stage11_closed_loop.py \
+              --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt \
+              --out /tmp/subway-stage11 \
+              --episodes 2 \
+              --max-seconds 28
+          cat /tmp/subway-stage11/stage11_summary.json
+      - name: Stage 12 learned self-play failure buffer
+        run: |
+          set -euxo pipefail
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
+            python subway_ai/scripts/collect_stage12_failure_buffer.py \
+              --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt \
+              --out /tmp/subway-stage12 \
+              --episodes 3 \
+              --max-seconds 32
+          cat /tmp/subway-stage12/stage12_summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stages10-12-pixel-policy
+          path: |
+            /tmp/subway-stage10-semantic/stage10_collection_summary.json
+            /tmp/subway-stage10-semantic/stage10_episodes.json
+            /tmp/subway-stage10-semantic/stage10_examples.jsonl
+            /tmp/subway-stage10-semantic/*-startup.json
+            /tmp/subway-stage10-semantic/*-actions.json
+            /tmp/subway-stage10-semantic/stage10_temporal_summary.json
+            /tmp/subway-stage10-semantic/stage10_temporal_encoder.pt
+            /tmp/subway-stage10-semantic/stage10_policy_summary.json
+            /tmp/subway-stage10-semantic/stage10_imitation_policy.pt
+            /tmp/subway-stage11/stage11_summary.json
+            /tmp/subway-stage12/stage12_summary.json
+            /tmp/subway-stage12/stage12_failure_examples.jsonl
+            /tmp/subway-stage12/failure_examples
+          retention-days: 3
+          if-no-files-found: warn
