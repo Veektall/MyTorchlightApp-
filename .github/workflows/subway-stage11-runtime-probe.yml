@@ -1,0 +1,33 @@
+name: Subway Stage 11 Runtime Probe
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - '.github/workflows/subway-stage11-runtime-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: subway-video-corpus
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install probe runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri
+          python -m pip install --upgrade pip
+          pip install numpy pillow torch --index-url https://download.pytorch.org/whl/cpu
+          pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Probe official runtime
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/probe_stage11_runtime.py
