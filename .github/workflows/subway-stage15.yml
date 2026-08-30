@@ -6,6 +6,7 @@ on:
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v2.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v3.py'
+      - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v4.py'
       - '.github/workflows/subway-stage15.yml'
       - 'subway_ai/stage15-trigger.txt'
   workflow_dispatch:
@@ -50,7 +51,7 @@ jobs:
         run: |
           mkdir -p /tmp/subway-stage15
           xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v3.py \
+            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v4.py \
             --checkpoint "$STAGE13_CKPT" --out /tmp/subway-stage15 \
             --learned-episodes 3 --watchdog-seconds 180
       - name: Publish durable Stage 15 status
