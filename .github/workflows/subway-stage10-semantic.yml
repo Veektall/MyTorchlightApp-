@@ -1,0 +1,63 @@
+name: Subway Stage 10 Semantic
+on:
+  workflow_dispatch:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - subway_ai/stage10-semantic-trigger.txt
+permissions:
+  contents: read
+jobs:
+  stage10:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      STAGE10_TEACHER_EPISODES: '8'
+      STAGE10_TEACHER_SECONDS: '45'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg mesa-utils libgl1-mesa-dri xvfb
+          pip install numpy opencv-python-headless
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 sharp@0.34.3
+          npx playwright install --with-deps chromium
+      - name: Collect pixel-grounded exact teacher episodes
+        run: |
+          rm -rf /tmp/subway-stage10-teacher /tmp/subway-stage10-work
+          mkdir -p /tmp/subway-stage10-teacher /tmp/subway-stage10-work
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' node subway_ai/scripts/collect_stage10_teacher.js /tmp/subway-stage10-teacher
+          cat /tmp/subway-stage10-teacher/stage10_teacher_summary.json
+      - name: Build exact pre-action semantic dataset
+        run: |
+          python subway_ai/scripts/build_stage10_teacher_dataset.py --teacher-root /tmp/subway-stage10-teacher --root /tmp/subway-stage10-work
+          cat /tmp/subway-stage10-work/stage10_dataset_summary.json
+      - name: Train and gate Stage 10 v4
+        run: |
+          python subway_ai/scripts/train_stage10_v4.py --root /tmp/subway-stage10-work --pretrain-epochs 18 --policy-epochs 32
+          cat /tmp/subway-stage10-work/stage10_temporal_summary.json
+          cat /tmp/subway-stage10-work/stage10_policy_summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stage10-semantic
+          retention-days: 3
+          path: |
+            /tmp/subway-stage10-teacher/stage10_teacher_summary.json
+            /tmp/subway-stage10-teacher/*-actions.json
+            /tmp/subway-stage10-work/stage10_dataset_summary.json
+            /tmp/subway-stage10-work/stage10_examples.jsonl
+            /tmp/subway-stage10-work/stage10_temporal_summary.json
+            /tmp/subway-stage10-work/stage10_policy_summary.json
+            /tmp/subway-stage10-work/stage10_temporal_encoder.pt
+            /tmp/subway-stage10-work/stage10_imitation_policy.pt
