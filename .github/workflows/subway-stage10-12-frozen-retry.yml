@@ -4,6 +4,8 @@ on:
   push:
     branches: [subway-video-corpus]
     paths:
+      - 'subway_ai/scripts/stage10_v4_model.py'
+      - 'subway_ai/scripts/train_stage10_v4.py'
       - '.github/workflows/subway-stage10-12-frozen-retry.yml'
   workflow_dispatch:
 
