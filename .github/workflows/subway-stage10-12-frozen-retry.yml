@@ -1,0 +1,145 @@
+name: Subway Stages 10-12 Frozen Corpus Retry
+
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - '.github/workflows/subway-stage10-12-frozen-retry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: subway-stage10-12-frozen-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      FROZEN_SOURCE_RUN: '33285857731'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: subway-video-corpus
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install model and live-game runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri
+          python -m pip install --upgrade pip
+          pip install numpy pillow
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Download frozen verified official Stage-10 corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: subway-stages10-12-pixel-policy
+          path: /tmp/frozen-stage10
+          github-token: ${{ github.token }}
+          run-id: 33285857731
+      - name: Prepare frozen corpus
+        id: corpus
+        run: |
+          rm -rf /tmp/subway-stage10-semantic /tmp/subway-stage11 /tmp/subway-stage12
+          cp -a /tmp/frozen-stage10/subway-stage10-semantic /tmp/subway-stage10-semantic
+          mkdir -p /tmp/subway-stage11 /tmp/subway-stage12
+          rm -f /tmp/subway-stage10-semantic/stage10_temporal_summary.json \
+                /tmp/subway-stage10-semantic/stage10_temporal_encoder.pt \
+                /tmp/subway-stage10-semantic/stage10_policy_summary.json \
+                /tmp/subway-stage10-semantic/stage10_imitation_policy.pt
+          test -s /tmp/subway-stage10-semantic/stage10_examples.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/subway-stage10-semantic/stage10_collection_summary.json')
+          x=json.loads(p.read_text())
+          assert x.get('accepted') is True, x
+          assert x.get('examples_total',0) >= 400, x
+          print(json.dumps(x,indent=2))
+          PY
+      - name: Stage 10 masked temporal reconstruction and semantic imitation
+        id: s10
+        continue-on-error: true
+        run: python subway_ai/scripts/train_stage10_v4.py --root /tmp/subway-stage10-semantic --pretrain-epochs 18 --policy-epochs 32
+      - name: Stage 11 fresh official-game closed-loop benchmark
+        id: s11
+        if: steps.s10.outcome == 'success'
+        continue-on-error: true
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/evaluate_stage11_closed_loop.py --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt --out /tmp/subway-stage11 --episodes 2 --max-seconds 28
+      - name: Stage 12 fresh learned self-play failure buffer
+        id: s12
+        if: steps.s10.outcome == 'success'
+        continue-on-error: true
+        run: |
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/collect_stage12_failure_buffer.py --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt --out /tmp/subway-stage12 --episodes 3 --max-seconds 32
+      - name: Publish frozen-retry status
+        if: always()
+        env:
+          S10: ${{ steps.s10.outcome }}
+          S11: ${{ steps.s11.outcome }}
+          S12: ${{ steps.s12.outcome }}
+        run: |
+          mkdir -p subway_ai/status
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          def read(p):
+              p=Path(p)
+              if not p.exists(): return None
+              try:return json.loads(p.read_text())
+              except Exception as e:return {'parse_error':str(e)}
+          temporal=read('/tmp/subway-stage10-semantic/stage10_temporal_summary.json')
+          policy=read('/tmp/subway-stage10-semantic/stage10_policy_summary.json')
+          s11=read('/tmp/subway-stage11/stage11_summary.json')
+          s12=read('/tmp/subway-stage12/stage12_summary.json')
+          out={
+            'workflow':'subway-stage10-12-frozen-retry','run_id':os.getenv('GITHUB_RUN_ID'),'head_sha':os.getenv('GITHUB_SHA'),
+            'frozen_stage10_corpus_source_run':os.getenv('FROZEN_SOURCE_RUN'),
+            'stage10_collection':read('/tmp/subway-stage10-semantic/stage10_collection_summary.json'),
+            'stage10_temporal':temporal,'stage10_policy':policy,'stage11':s11,'stage12':s12,
+            'steps':{'stage10':os.getenv('S10'),'stage11':os.getenv('S11'),'stage12':os.getenv('S12')}
+          }
+          out['stage10_completed']=bool(temporal and temporal.get('accepted') and policy and policy.get('accepted'))
+          out['stage11_completed']=bool(s11 and s11.get('benchmark_complete'))
+          out['stage12_completed']=bool(s12 and s12.get('completed'))
+          out['learned_policy_competence_claim']=bool(s11 and s11.get('competence_claim'))
+          out['all_requested_stages_completed']=out['stage10_completed'] and out['stage11_completed'] and out['stage12_completed']
+          Path('subway_ai/status/stage10-12-retry-latest.json').write_text(json.dumps(out,indent=2))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add subway_ai/status/stage10-12-retry-latest.json
+          git commit -m 'status: publish frozen Stage 10-12 retry' || true
+          git push origin HEAD:subway-video-corpus
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stages10-12-frozen-retry
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            /tmp/subway-stage10-semantic/stage10_temporal_summary.json
+            /tmp/subway-stage10-semantic/stage10_temporal_encoder.pt
+            /tmp/subway-stage10-semantic/stage10_policy_summary.json
+            /tmp/subway-stage10-semantic/stage10_imitation_policy.pt
+            /tmp/subway-stage11/stage11_summary.json
+            /tmp/subway-stage12/stage12_summary.json
+            /tmp/subway-stage12/stage12_failure_examples.jsonl
+            /tmp/subway-stage12/failure_examples
+      - name: Enforce requested-stage completion
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('subway_ai/status/stage10-12-retry-latest.json'))
+          raise SystemExit(0 if p['all_requested_stages_completed'] else 41)
+          PY
