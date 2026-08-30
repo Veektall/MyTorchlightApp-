@@ -73,8 +73,6 @@ def main():
     X=torch.from_numpy(X);idx_tr=np.array([i for i,p in enumerate(paths) if p in tr_ids]);idx_va=np.array([i for i,p in enumerate(paths) if p in va_ids])
     print('loading',len(rows),'pixel clips; held-out episodes',val_ids,flush=True)
 
-    # 10A: masked middle-frame reconstruction. Start exactly at neighbour interpolation,
-    # train only a residual, and retain the best held-out whole-episode checkpoint.
     pre=Stage10Pretrainer();head=nn.Sequential(nn.Linear(96,128),nn.ReLU(),nn.Linear(128,180));nn.init.zeros_(head[-1].weight);nn.init.zeros_(head[-1].bias)
     opt=torch.optim.AdamW(list(pre.encoder.parameters())+list(head.parameters()),lr=8e-4,weight_decay=1e-4)
     dl=DataLoader(MemClips(X[idx_tr]),batch_size=32,shuffle=True);vl=DataLoader(MemClips(X[idx_va]),batch_size=32,shuffle=False)
@@ -93,17 +91,11 @@ def main():
     raw_gain=(m['persistence_raw_pixel_l1']-m['interpolation_raw_pixel_l1'])/max(m['persistence_raw_pixel_l1'],1e-9)
     coarse_gain=(m['persistence_coarse_l1']-m['model_coarse_l1'])/max(m['persistence_coarse_l1'],1e-9)
     residual_gain=(m['interpolation_coarse_l1']-m['model_coarse_l1'])/max(m['interpolation_coarse_l1'],1e-9)
-    # Measured on the real held-out corpus before this CI run: raw interpolation gives
-    # a ~5% persistence gain; the learned coarse residual gives ~8%. Require both effects
-    # instead of inventing an 8% raw threshold the data itself does not support.
-    pre_ok=raw_gain>=.03 and coarse_gain>=.08 and m['model_coarse_l1']<=m['interpolation_coarse_l1']*1.01
+    pre_ok=bool(raw_gain>=.03 and coarse_gain>=.08 and m['model_coarse_l1']<=m['interpolation_coarse_l1']*1.01)
     temporal={'stage':'10A-masked-temporal-reconstruction-v5','train_examples':len(idx_tr),'validation_examples':len(idx_va),'validation_episode_ids':val_ids,'best_epoch':best_epoch,'masked_frame_index':4,'objective':'learned residual over two-neighbour interpolation for a masked middle frame','target_representation':'fixed 6x10 RGB spatial grid','validation':{k:round(v,6) for k,v in m.items()},'raw_interpolation_improvement_over_persistence':round(raw_gain,4),'learned_coarse_improvement_over_persistence':round(coarse_gain,4),'learned_residual_improvement_over_interpolation':round(residual_gain,4),'acceptance_gate':{'raw_interpolation_improvement_over_persistence_min':.03,'learned_coarse_improvement_over_persistence_min':.08,'learned_model_may_not_degrade_interpolation_by_more_than':.01},'policy_labels_used':False,'privileged_game_state_used':False,'accepted':pre_ok}
     (root/'stage10_temporal_summary.json').write_text(json.dumps(temporal,indent=2));torch.save({'encoder':pre.encoder.state_dict(),'policy_contract':'pixel-policy-contract-v1.1','objective':'masked_temporal_reconstruction_v5','best_epoch':best_epoch},root/'stage10_temporal_encoder.pt');print(json.dumps(temporal,indent=2),flush=True)
     if not pre_ok:raise SystemExit(13)
 
-    # 10B: action semantics. The held-out corpus showed the compact local hazard features
-    # generalize better than the global GRU state for rare maneuvers, so the policy head is
-    # feature-first while the temporal checkpoint remains a separately validated artifact.
     policy=Stage10Policy();opt=torch.optim.AdamW(policy.parameters(),lr=2e-3,weight_decay=1e-4)
     tr_counts=np.bincount(Y[idx_tr],minlength=len(ACTIONS));weights=np.array([1.0/tr_counts[Y[i]] for i in idx_tr],dtype=np.float64)
     sampler=WeightedRandomSampler(weights,num_samples=max(len(idx_tr),1024),replacement=True);pdl=DataLoader(MemClips(X[idx_tr],Y[idx_tr]),batch_size=24,sampler=sampler)
@@ -118,7 +110,7 @@ def main():
         if ep in {0,7,15,args.policy_epochs-1} or patience==0:print('policy',ep+1,'loss',round(float(np.mean(ls)),6),'val_acc',round(acc,4),'val_bal',round(bal,4),'rec',[round(float(x),3) for x in rec],flush=True)
     policy.load_state_dict(best_policy);acc,bal,cm,rec,mean_conf=best_metrics
     vc=np.bincount(Y[idx_va],minlength=len(ACTIONS));maj=float(vc.max()/len(idx_va));recmap={ACTIONS[i]:round(float(rec[i]),4) for i in range(len(ACTIONS))}
-    maneuver_ok=all(rec[i]>=.30 for i in [1,2,3,4]);stay_ok=rec[0]>=.25;accepted=acc>maj and bal>=.40 and maneuver_ok and stay_ok
+    maneuver_ok=bool(all(bool(rec[i]>=.30) for i in [1,2,3,4]));stay_ok=bool(rec[0]>=.25);accepted=bool(acc>maj and bal>=.40 and maneuver_ok and stay_ok)
     summary={'stage':'10B-semantic-imitation-policy-v5','examples_total':len(rows),'train_examples':len(idx_tr),'validation_examples':len(idx_va),'validation_episode_ids':val_ids,'best_epoch':best_policy_epoch,'class_counts':dict(counts),'accuracy':round(acc,4),'balanced_accuracy':round(bal,4),'majority_accuracy':round(maj,4),'per_class_recall':recmap,'mean_prediction_confidence':round(mean_conf,4),'confusion_matrix':cm.tolist(),'policy_architecture':'12 pixels-derived lane/height/motion hazard features -> 32-hidden MLP -> five actions','temporal_encoder_checkpoint_validated_separately':True,'temporal_encoder_used_by_action_head':False,'reason_temporal_not_in_action_head':'held-out rare-maneuver recall was materially better with compact local pixel hazards than the global temporal hidden state','acceptance_gate':{'accuracy_must_exceed_majority':True,'balanced_accuracy_min':.40,'maneuver_recall_min':.30,'stay_recall_min':.25},'label_origin':'exact_browser_input_from_semantic_pixel_teacher','privileged_game_state_used':False,'accepted':accepted}
     (root/'stage10_policy_summary.json').write_text(json.dumps(summary,indent=2));torch.save({'model':policy.state_dict(),'actions':ACTIONS,'input_size':[8,3,54,96],'policy_contract':'pixel-policy-contract-v1.1','stage':'10B-v5','best_epoch':best_policy_epoch},root/'stage10_imitation_policy.pt');print(json.dumps(summary,indent=2),flush=True)
     if not accepted:raise SystemExit(14)
