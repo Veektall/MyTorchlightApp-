@@ -19,6 +19,7 @@ on:
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v14.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v15.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v16.py'
+      - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v17.py'
       - '.github/workflows/subway-stage15.yml'
       - 'subway_ai/stage15-trigger.txt'
   workflow_dispatch:
@@ -28,7 +29,7 @@ permissions:
 jobs:
   stage15:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       LIBGL_ALWAYS_SOFTWARE: '1'
       STAGE13_SOURCE_RUN: '33313827136'
@@ -63,7 +64,7 @@ jobs:
         run: |
           mkdir -p /tmp/subway-stage15
           xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v16.py \
+            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v17.py \
             --checkpoint "$STAGE13_CKPT" --out /tmp/subway-stage15 \
             --learned-episodes 3 --watchdog-seconds 180
       - name: Publish durable Stage 15 status
@@ -79,7 +80,7 @@ jobs:
           Path('subway_ai/status/stage15-latest.json').write_text(json.dumps(out,indent=2))
           PY
           git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.email 41898282+Veektall@users.noreply.github.com
           git add subway_ai/status/stage15-latest.json
           git commit -m 'status: publish Stage 15 evaluator result' || true
           git pull --rebase origin subway-video-corpus || true
