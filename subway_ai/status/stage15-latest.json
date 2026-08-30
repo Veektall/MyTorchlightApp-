@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33323766469",
-  "head_sha": "5fc986f87c2c4aa4697a184dcb2f636e4054b358",
+  "run_id": "33324192690",
+  "head_sha": "620b0d328897595c3ded6199afcdfbdaf01bd5dc",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
@@ -16,8 +16,12 @@
         "valid": false,
         "startup": {
           "ok": false,
-          "reason": "progressive_burst_tutorial_timeout",
-          "startup_controller": "pixel_progressive_dense_bursts_v13",
+          "reason": "async_prompt_tutorial_timeout",
+          "startup_controller": "async_prompt_directed_v16",
+          "tutorial_prompt_sequence": [
+            "up",
+            "down"
+          ],
           "tutorial_events": [
             {
               "t": 0.0,
@@ -26,696 +30,224 @@
               "score": null
             },
             {
-              "t": 7.01,
-              "event": "stall_enter",
-              "score": 3,
-              "starting_direction": "up"
-            },
-            {
-              "t": 7.01,
-              "event": "burst_press",
+              "t": 32.93,
+              "event": "prompt_seen",
               "direction": "up",
-              "count": 4,
-              "score": 3
-            },
-            {
-              "t": 8.99,
-              "event": "stall_released",
-              "score": 14,
-              "stall_sec": 1.97
-            },
-            {
-              "t": 21.44,
-              "event": "stall_enter",
               "score": 43,
-              "starting_direction": "down"
+              "text": "press. arrow. keyup\n a\nrrepecarrith\n"
             },
             {
-              "t": 21.44,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 23.21,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 25.16,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 26.8,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 28.54,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 33.38,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 43
-            },
-            {
-              "t": 35.92,
-              "event": "burst_press",
+              "t": 32.93,
+              "event": "prompt_press",
               "direction": "up",
-              "count": 4,
               "score": 43
             },
             {
-              "t": 37.57,
-              "event": "burst_press",
+              "t": 34.06,
+              "event": "prompt_press",
               "direction": "up",
-              "count": 4,
               "score": 43
             },
             {
-              "t": 40.29,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 43
+              "t": 35.32,
+              "event": "prompt_clear_candidate",
+              "previous": "up",
+              "score": 49
             },
             {
-              "t": 42.5,
-              "event": "stall_released",
-              "score": 55,
-              "stall_sec": 21.06
+              "t": 37.23,
+              "event": "prompt_seen",
+              "direction": "up",
+              "score": 60,
+              "text": "goyal =. i]\nfata sses up \\\n gl sss\n| ts oo \\\n"
             },
             {
-              "t": 44.28,
-              "event": "stall_enter",
-              "score": 55,
-              "starting_direction": "left"
+              "t": 37.23,
+              "event": "prompt_press",
+              "direction": "up",
+              "score": 60
             },
             {
-              "t": 44.28,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 55
+              "t": 38.88,
+              "event": "prompt_press",
+              "direction": "up",
+              "score": 61
             },
             {
-              "t": 45.97,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 55
+              "t": 40.09,
+              "event": "prompt_clear_candidate",
+              "previous": "up",
+              "score": 61
             },
             {
-              "t": 47.82,
-              "event": "stall_released",
+              "t": 71.17,
+              "event": "prompt_seen",
+              "direction": "up",
               "score": 61,
-              "stall_sec": 3.55
+              "text": "\u2014- \u201can\npress'ayrow;keyiup\n mol\n"
             },
             {
-              "t": 50.79,
-              "event": "stall_enter",
+              "t": 71.17,
+              "event": "prompt_press",
+              "direction": "up",
+              "score": 61
+            },
+            {
+              "t": 75.87,
+              "event": "prompt_clear_candidate",
+              "previous": "up",
+              "score": 61
+            },
+            {
+              "t": 80.56,
+              "event": "prompt_seen",
+              "direction": "up",
               "score": 61,
-              "starting_direction": "right"
+              "text": "ear 4\n ] sie nup\n"
             },
             {
-              "t": 50.79,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 61
-            },
-            {
-              "t": 52.51,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 61
-            },
-            {
-              "t": 54.17,
-              "event": "burst_press",
+              "t": 80.56,
+              "event": "prompt_press",
               "direction": "up",
-              "count": 4,
               "score": 61
             },
             {
-              "t": 55.85,
-              "event": "burst_press",
+              "t": 81.62,
+              "event": "prompt_press",
               "direction": "up",
-              "count": 4,
               "score": 61
             },
             {
-              "t": 57.53,
-              "event": "stall_released",
-              "score": 72,
-              "stall_sec": 6.74
+              "t": 82.61,
+              "event": "prompt_clear_candidate",
+              "previous": "up",
+              "score": 61
             },
             {
-              "t": 64.06,
-              "event": "stall_enter",
+              "t": 174.01,
+              "event": "prompt_seen",
+              "direction": "down",
               "score": 97,
-              "starting_direction": "down"
+              "text": "| je ss \\\npressyarrow/key(down\n[ae\n \u2014\u2014. sa oo\nmee wh\npress;arrowikey(down\n"
             },
             {
-              "t": 64.06,
-              "event": "burst_press",
+              "t": 174.01,
+              "event": "prompt_press",
               "direction": "down",
-              "count": 4,
               "score": 97
             },
             {
-              "t": 65.7,
-              "event": "burst_press",
+              "t": 175.77,
+              "event": "prompt_press",
               "direction": "down",
-              "count": 4,
               "score": 97
             },
             {
-              "t": 69.25,
-              "event": "stall_released",
-              "score": 102,
-              "stall_sec": 5.19
+              "t": 176.99,
+              "event": "prompt_clear_candidate",
+              "previous": "down",
+              "score": 97
             },
             {
-              "t": 71.78,
-              "event": "stall_enter",
-              "score": 102,
-              "starting_direction": "left"
-            },
-            {
-              "t": 71.78,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 102
-            },
-            {
-              "t": 74.32,
-              "event": "stall_released",
-              "score": 115,
-              "stall_sec": 2.54
-            },
-            {
-              "t": 75.82,
-              "event": "stall_enter",
-              "score": 115,
-              "starting_direction": "right"
-            },
-            {
-              "t": 75.82,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 115
-            },
-            {
-              "t": 78.24,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 115
-            },
-            {
-              "t": 80.09,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 115
-            },
-            {
-              "t": 81.79,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 115
-            },
-            {
-              "t": 83.51,
-              "event": "burst_press",
+              "t": 228.36,
+              "event": "prompt_seen",
               "direction": "down",
-              "count": 4,
-              "score": 115
+              "score": 97,
+              "text": "press se key(down\n presssarrowlkey(down\n"
             },
             {
-              "t": 85.61,
-              "event": "stall_released",
-              "score": 120,
-              "stall_sec": 9.79
-            },
-            {
-              "t": 92.81,
-              "event": "stall_enter",
-              "score": 158,
-              "starting_direction": "left"
-            },
-            {
-              "t": 92.81,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 95.87,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 98.4,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 100.1,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 101.77,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 103.53,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 105.15,
-              "event": "burst_press",
+              "t": 228.36,
+              "event": "prompt_press",
               "direction": "down",
-              "count": 4,
-              "score": 158
+              "score": 97
             },
             {
-              "t": 106.81,
-              "event": "burst_press",
+              "t": 229.59,
+              "event": "prompt_press",
               "direction": "down",
-              "count": 4,
-              "score": 158
+              "score": 97
             },
             {
-              "t": 108.64,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 110.64,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 113.01,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 114.7,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 116.33,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 118.16,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 119.8,
-              "event": "burst_press",
+              "t": 230.62,
+              "event": "prompt_press",
               "direction": "down",
-              "count": 4,
-              "score": 158
+              "score": 97
             },
             {
-              "t": 121.62,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 123.69,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 125.31,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 126.93,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 128.75,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 130.46,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 135.13,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 136.89,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 138.78,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 141.12,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 142.94,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 145.13,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 147.27,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 148.99,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 151.41,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 153.12,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 154.79,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 158.52,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 160.25,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 163.17,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 165.39,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 168.23,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 169.97,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 172.23,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 174.02,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 177.43,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 179.24,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 158
-            },
-            {
-              "t": 181.04,
-              "event": "stall_released",
-              "score": 161,
-              "stall_sec": 88.23
-            },
-            {
-              "t": 187.45,
-              "event": "stall_enter",
-              "score": 161,
-              "starting_direction": "right"
-            },
-            {
-              "t": 187.45,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 189.15,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 190.85,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 196.6,
-              "event": "burst_press",
-              "direction": "up",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 200.8,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 202.42,
-              "event": "burst_press",
-              "direction": "down",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 204.3,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 206.11,
-              "event": "burst_press",
-              "direction": "left",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 207.77,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 161
-            },
-            {
-              "t": 209.91,
-              "event": "burst_press",
-              "direction": "right",
-              "count": 4,
-              "score": 161
+              "t": 233.66,
+              "event": "prompt_clear_candidate",
+              "previous": "down",
+              "score": 97
             }
           ],
-          "last_score": 161,
-          "valid_score_reads": 93,
+          "last_prompt_text": ", vv 7\nprey oct\n a \u00bb 4 |\nprego pits\n",
+          "current_prompt": null,
+          "last_score": 97,
+          "valid_score_reads": 97,
           "recent_score_values": [
-            145,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            158,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161,
-            161
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97,
+            97
           ],
-          "motion_median": 0.174464,
-          "seconds_since_last_score_change": 30.52
+          "motion_median": 0.143895,
+          "seconds_since_last_score_change": 150.07
         },
         "reason": "startup_or_score_lock_failed",
         "video_file": "stay_ep1.webm"
