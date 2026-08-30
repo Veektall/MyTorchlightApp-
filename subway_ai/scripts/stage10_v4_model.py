@@ -66,7 +66,15 @@ class Stage10Pretrainer(nn.Module):
         h=self.encode_prefix(x); z=self.candidate(x[:,7]); return h,z,self.direction(h)
 
 class Stage10Policy(nn.Module):
+    """Pixels-only semantic action head.
+
+    The Stage-10 temporal encoder is trained and gated separately. Held-out evidence showed
+    that injecting its global hidden state into the small semantic classifier reduced
+    rare-maneuver recall, because the teacher's strongest action cues are local lane/height
+    hazards. Keep the action head deliberately small and auditable around those pixel cues.
+    """
     def __init__(self):
-        super().__init__(); self.encoder=TemporalEncoder(); self.head=nn.Sequential(nn.Linear(96+12,96),nn.ReLU(),nn.Dropout(.12),nn.Linear(96,len(ACTIONS)))
+        super().__init__()
+        self.head=nn.Sequential(nn.Linear(12,32),nn.ReLU(),nn.Linear(32,len(ACTIONS)))
     def forward(self,x):
-        _,h=self.encoder(x); return self.head(torch.cat([h,pixel_features(x)],1))
+        return self.head(pixel_features(x))
