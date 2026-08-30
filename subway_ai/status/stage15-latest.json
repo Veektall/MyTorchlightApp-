@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33315591694",
-  "head_sha": "2afa983422bda7c93cac1a75d141e53b468943d5",
+  "run_id": "33315822935",
+  "head_sha": "e55556958845d8a58f35a01ea86644a368fdc3d1",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
@@ -14,7 +14,14 @@
         "policy": "stay",
         "episode": 1,
         "valid": false,
-        "reason": "official Pixi canvas not found"
+        "startup": {
+          "ok": false,
+          "reason": "no_verified_endless_play_or_pixel_score_lock",
+          "tracks": 0,
+          "motion_median": 0.243791
+        },
+        "reason": "startup_or_score_lock_failed",
+        "video_file": "stay_ep1.webm"
       }
     ],
     "aggregate": {
