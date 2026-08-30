@@ -1,11 +1,11 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33327216975",
-  "head_sha": "5890fed6eff1c12f33aec2d40bbc416ec06ec119",
+  "run_id": "33332526983",
+  "head_sha": "895ba216c7244e239ec2ccd26031364d00379f0a",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
-    "stage": "15-pixel-evaluator-repair-v17",
+    "stage": "15-pixel-evaluator-repair-v19",
     "policy_contract": "pixel-policy-contract-v1.1",
     "official_game": "https://poki.com/en/g/subway-surfers",
     "persistent_context_tutorial_once": true,
@@ -17,1595 +17,529 @@
         "valid": false,
         "startup": {
           "ok": false,
-          "reason": "persistent_latched_bootstrap_timeout_v18",
-          "startup_controller": "persistent_latched_prompt_v18",
+          "reason": "persistent_motion_gated_bootstrap_timeout_v19",
+          "startup_controller": "persistent_motion_gated_prompt_v19",
           "tutorial_prompt_sequence": [
             "up",
-            "down",
-            "left"
+            "down"
           ],
           "tutorial_events": [
             {
               "t": 0.0,
-              "event": "recovery_press",
+              "event": "bootstrap_recovery_press",
               "key": "Enter",
               "score": null
             },
             {
-              "t": 3.56,
-              "event": "recovery_press",
+              "t": 2.53,
+              "event": "bootstrap_recovery_press",
               "key": "Space",
               "score": null
             },
             {
-              "t": 8.66,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": null
-            },
-            {
-              "t": 11.95,
-              "event": "recovery_press",
+              "t": 5.52,
+              "event": "bootstrap_recovery_press",
               "key": "Enter",
               "score": null
             },
             {
-              "t": 17.27,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": null
-            },
-            {
-              "t": 19.61,
-              "event": "recovery_press",
+              "t": 8.93,
+              "event": "bootstrap_recovery_press",
               "key": "Space",
               "score": null
             },
             {
-              "t": 21.85,
-              "event": "score_reset",
-              "score": 4
-            },
-            {
-              "t": 40.09,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 43.17,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 43
-            },
-            {
-              "t": 45.79,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 47.61,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 43
-            },
-            {
-              "t": 49.65,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 43
-            },
-            {
-              "t": 51.95,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 54.26,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 43
-            },
-            {
-              "t": 56.18,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 58.44,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 43
-            },
-            {
-              "t": 61.87,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 64.88,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 43
-            },
-            {
-              "t": 66.87,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 43
-            },
-            {
-              "t": 70.01,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 43
-            },
-            {
-              "t": 73.32,
-              "event": "prompt_latched",
-              "direction": "up",
-              "score": 43,
-              "text": "pressiarrowikeyup\n"
-            },
-            {
-              "t": 73.32,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 43
-            },
-            {
-              "t": 74.52,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 43
-            },
-            {
-              "t": 77.72,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 43
-            },
-            {
-              "t": 79.86,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 43
-            },
-            {
-              "t": 82.03,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 43
-            },
-            {
-              "t": 82.79,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 61
-            },
-            {
-              "t": 84.43,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 61
-            },
-            {
-              "t": 86.06,
-              "event": "prompt_cleared_by_absence_and_progress",
-              "direction": "up",
-              "from": 43,
-              "to": 61
-            },
-            {
-              "t": 86.72,
-              "event": "prompt_latched",
+              "t": 34.43,
+              "event": "prompt_armed",
               "direction": "up",
               "score": 61,
-              "text": "==\"\n\n{\n\nfj\n\nsal\n\narrow key\n\nup.\n"
+              "text": ") pete\n\n\u2014.\n\ney\n\npress'arrow;key/up\n"
             },
             {
-              "t": 86.72,
-              "event": "prompt_press",
+              "t": 34.43,
+              "event": "prompt_press_motion_gated",
               "direction": "up",
-              "score": 61
+              "score": 61,
+              "frozen": false,
+              "motion": 0.117058
+            },
+            {
+              "t": 35.13,
+              "event": "prompt_action_motion_resumed",
+              "direction": "up",
+              "score": 61,
+              "motion": 0.106987
+            },
+            {
+              "t": 46.65,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 92,
+              "text": "key!\n\ndown\n\naa aytow,\n"
+            },
+            {
+              "t": 46.65,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 92,
+              "frozen": false,
+              "motion": 0.138459
+            },
+            {
+              "t": 47.59,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 92,
+              "motion": 0.139619
             },
             {
               "t": 88.55,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 61
-            },
-            {
-              "t": 89.86,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 61
-            },
-            {
-              "t": 90.78,
-              "event": "prompt_press",
-              "direction": "up",
-              "score": 61
-            },
-            {
-              "t": 92.49,
-              "event": "prompt_cleared_by_absence_and_progress",
-              "direction": "up",
-              "from": 61,
-              "to": 77
-            },
-            {
-              "t": 105.54,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 107.69,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 109.88,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 112.84,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 115.62,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 117.45,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 119.87,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 121.82,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 123.78,
-              "event": "prompt_latched",
+              "event": "prompt_armed",
               "direction": "down",
               "score": 97,
-              "text": "press arrow key'down\n\nith.\n"
+              "text": "press atrow/key\\down\n\non\n\nih\n"
             },
             {
-              "t": 123.78,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 125.0,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 126.49,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 127.34,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 129.05,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 130.2,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 131.83,
-              "event": "stale_prompt_released_for_recovery",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 132.94,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 135.12,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 137.93,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 140.63,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 142.49,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 144.32,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 146.68,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 148.59,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 151.3,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 153.3,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 155.25,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 158.34,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 160.9,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 163.49,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 165.37,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 168.4,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 170.2,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 173.11,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 175.13,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 177.41,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 179.21,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 182.19,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 184.27,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 186.75,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 190.28,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 192.76,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 195.29,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 198.48,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 200.58,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 202.98,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 205.44,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 207.48,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 209.3,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 211.86,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 213.92,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 216.43,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 219.4,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 222.62,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 225.35,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 227.18,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 229.81,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 232.22,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 235.01,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 238.08,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 240.62,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 242.46,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 245.38,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 248.33,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 250.26,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 253.21,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 255.11,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 256.94,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 259.13,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 261.11,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 263.29,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 265.24,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 268.41,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 270.23,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 272.9,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 274.7,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 276.57,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 279.12,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 281.66,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 283.46,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 285.76,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 288.37,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 290.26,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 292.31,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 294.62,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 296.51,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 298.82,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 301.63,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 304.06,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 305.87,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 309.14,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 311.06,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 313.21,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 315.19,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 317.53,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 320.74,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 322.69,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 324.88,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 327.57,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 329.97,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 331.92,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 334.91,
-              "event": "prompt_latched",
+              "t": 88.55,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
               "score": 97,
-              "text": "press{arrowikey/down\n"
+              "frozen": false,
+              "motion": 0.108831
             },
             {
-              "t": 334.91,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 336.12,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 337.89,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 339.51,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 341.1,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 342.31,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 344.07,
-              "event": "prompt_press",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 345.93,
-              "event": "stale_prompt_released_for_recovery",
-              "direction": "down",
-              "score": 97
-            },
-            {
-              "t": 346.93,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 349.07,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 351.76,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 353.83,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 356.17,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 358.08,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 359.95,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 363.31,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 366.35,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 368.21,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 370.75,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 372.75,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 374.58,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 377.55,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 380.03,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 382.03,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 384.88,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 387.63,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 389.84,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 392.69,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 394.79,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 397.03,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 400.21,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 403.41,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 405.35,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 407.62,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 410.71,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 97
-            },
-            {
-              "t": 412.71,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 97
-            },
-            {
-              "t": 414.68,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 97
-            },
-            {
-              "t": 416.63,
-              "event": "prompt_latched",
+              "t": 90.04,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
               "score": 97,
-              "text": "pressjatrow, ney down\n\na\n"
+              "motion": 0.117174
             },
             {
-              "t": 416.63,
-              "event": "prompt_press",
+              "t": 98.67,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "text": "x\n\ndown\n\nkey\n\nas:\n\ni\n"
             },
             {
-              "t": 417.43,
-              "event": "prompt_press",
+              "t": 98.67,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "frozen": false,
+              "motion": 0.122826
             },
             {
-              "t": 418.23,
-              "event": "prompt_press",
+              "t": 99.66,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "motion": 0.125821
             },
             {
-              "t": 418.99,
-              "event": "prompt_press",
+              "t": 142.51,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "text": "pressjarro\n\nkey down\n\n4\n"
             },
             {
-              "t": 420.59,
-              "event": "prompt_press",
+              "t": 142.51,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "frozen": false,
+              "motion": 0.114848
             },
             {
-              "t": 422.36,
-              "event": "prompt_press",
+              "t": 143.27,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "motion": 0.124087
             },
             {
-              "t": 423.93,
-              "event": "prompt_press",
+              "t": 146.29,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "text": "\\\n\n s\n\nkey down\n"
             },
             {
-              "t": 424.72,
-              "event": "prompt_press",
+              "t": 146.29,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "frozen": false,
+              "motion": 0.133718
             },
             {
-              "t": 426.63,
-              "event": "prompt_press",
+              "t": 147.87,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "motion": 0.131863
             },
             {
-              "t": 428.17,
-              "event": "prompt_press",
+              "t": 159.5,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "text": "press\n\nayyrow\n\nkey'down\n\nme\n"
             },
             {
-              "t": 429.67,
-              "event": "prompt_press",
+              "t": 159.5,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "frozen": false,
+              "motion": 0.131573
             },
             {
-              "t": 431.65,
-              "event": "prompt_press",
+              "t": 160.61,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "motion": 0.135757
             },
             {
-              "t": 434.53,
-              "event": "prompt_press",
+              "t": 165.55,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "text": "rn\n\n\u2018arrowikey down\n\neh\n"
             },
             {
-              "t": 438.88,
-              "event": "prompt_press",
+              "t": 165.55,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 97
+              "score": 97,
+              "frozen": false,
+              "motion": 0.13309
             },
             {
-              "t": 440.73,
-              "event": "prompt_press",
+              "t": 166.51,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 106
+              "score": 97,
+              "motion": 0.133067
             },
             {
-              "t": 442.15,
-              "event": "prompt_press",
+              "t": 198.76,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 106
+              "score": 97,
+              "text": "tow\n\npresgnr\n\nkey down\n\ni\n\ni\n"
             },
             {
-              "t": 443.22,
-              "event": "prompt_press",
+              "t": 198.76,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 106
+              "score": 97,
+              "frozen": false,
+              "motion": 0.135584
             },
             {
-              "t": 445.11,
-              "event": "prompt_press",
+              "t": 199.68,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "score": 106
+              "score": 97,
+              "motion": 0.135584
             },
             {
-              "t": 446.81,
-              "event": "prompt_press",
+              "t": 213.22,
+              "event": "prompt_armed",
               "direction": "down",
-              "score": 145
+              "score": 97,
+              "text": "na,\n\n4\n\ndown\n\narrow) key!\n\n\\}\n"
             },
             {
-              "t": 448.15,
-              "event": "prompt_press",
+              "t": 213.22,
+              "event": "prompt_press_motion_gated",
               "direction": "down",
-              "score": 145
+              "score": 97,
+              "frozen": false,
+              "motion": 0.124282
             },
             {
-              "t": 449.5,
-              "event": "prompt_cleared_by_absence_and_progress",
+              "t": 214.63,
+              "event": "prompt_action_motion_resumed",
               "direction": "down",
-              "from": 97,
-              "to": 145
+              "score": 97,
+              "motion": 0.122647
             },
             {
-              "t": 457.32,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 268.91,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "v4\n\narrow/keyidown\n"
             },
             {
-              "t": 459.5,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 268.91,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.118011
             },
             {
-              "t": 462.05,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 269.66,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.126343
             },
             {
-              "t": 464.44,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 301.07,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "al\n\narrow an)\n\ndown\n"
             },
             {
-              "t": 466.29,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 301.07,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.150787
             },
             {
-              "t": 468.55,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 302.17,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.150787
             },
             {
-              "t": 470.58,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 337.41,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "key\n\ndown\n\n= yn\n"
             },
             {
-              "t": 472.84,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 337.41,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.138671
             },
             {
-              "t": 475.07,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 338.62,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.138671
             },
             {
-              "t": 476.9,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 410.09,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "press*\u2018arrowke\n\nh.\n\n\u00a5\n\ndown\n"
             },
             {
-              "t": 479.33,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 410.09,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.145784
             },
             {
-              "t": 481.41,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 411.1,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.143979
             },
             {
-              "t": 483.67,
-              "event": "prompt_latched",
-              "direction": "left",
-              "score": 158,
-              "text": "y\n\narrowikey, left\n\nhs\n\n|\n"
+              "t": 430.58,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "key'down\n\nmw\n"
             },
             {
-              "t": 483.67,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 430.58,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.127462
             },
             {
-              "t": 484.96,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 431.53,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.127462
             },
             {
-              "t": 485.71,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 450.71,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "a\n\npress;arrowkk\n\ney down\n\nth\n"
             },
             {
-              "t": 486.65,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 450.71,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.134065
             },
             {
-              "t": 487.51,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 451.91,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.133517
             },
             {
-              "t": 488.64,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 453.9,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "a\n\nkey'down\n\n+\n"
             },
             {
-              "t": 489.37,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 453.9,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.129475
             },
             {
-              "t": 491.15,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
+              "t": 454.64,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.129475
             },
             {
-              "t": 493.0,
-              "event": "stale_prompt_released_for_recovery",
-              "direction": "left",
-              "score": 158
+              "t": 470.24,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "press/arrow,ke\n\ny down\n"
             },
             {
-              "t": 493.5,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 470.24,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.133762
             },
             {
-              "t": 495.62,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 471.16,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.133762
             },
             {
-              "t": 497.96,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 506.52,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "press/arrow,key,\n\ndown\n\nro i\n"
             },
             {
-              "t": 499.87,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 506.52,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.13378
             },
             {
-              "t": 502.25,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 507.71,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.133133
             },
             {
-              "t": 504.18,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 532.29,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "arrow)keyidown\n"
             },
             {
-              "t": 505.72,
-              "event": "score_reset",
-              "score": 5
+              "t": 532.29,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.14164
             },
             {
-              "t": 512.4,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 5
+              "t": 533.22,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.137223
             },
             {
-              "t": 521.72,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
+              "t": 539.49,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "arrow)keyidown\n\n\\n\n"
             },
             {
-              "t": 523.62,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 539.49,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.123117
             },
             {
-              "t": 525.59,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 540.28,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.123117
             },
             {
-              "t": 528.67,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 573.13,
+              "event": "prompt_armed",
+              "direction": "down",
+              "score": 97,
+              "text": "pressjarrowik:\n\n.\n\ndown\n\n2...\n"
             },
             {
-              "t": 530.68,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
+              "t": 573.13,
+              "event": "prompt_press_motion_gated",
+              "direction": "down",
+              "score": 97,
+              "frozen": false,
+              "motion": 0.139326
             },
             {
-              "t": 532.5,
-              "event": "score_reset",
-              "score": 5
-            },
-            {
-              "t": 542.83,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 544.87,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 547.02,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 548.92,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 550.88,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 552.87,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 555.12,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 556.65,
-              "event": "prompt_latched",
-              "direction": "left",
-              "score": 158,
-              "text": "=\n\narrowkey/left\n"
-            },
-            {
-              "t": 556.65,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 558.02,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 559.6,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 561.34,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 563.02,
-              "event": "prompt_press",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 564.75,
-              "event": "stale_prompt_released_for_recovery",
-              "direction": "left",
-              "score": 158
-            },
-            {
-              "t": 566.21,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 568.04,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 570.0,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 572.32,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 574.88,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 577.21,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 579.49,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 582.81,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 584.85,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 586.89,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
-            },
-            {
-              "t": 588.99,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 592.18,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 594.01,
-              "event": "recovery_press",
-              "key": "Enter",
-              "score": 158
-            },
-            {
-              "t": 596.58,
-              "event": "recovery_press",
-              "key": "Space",
-              "score": 158
-            },
-            {
-              "t": 599.27,
-              "event": "recovery_press",
-              "key": "ArrowUp",
-              "score": 158
+              "t": 574.4,
+              "event": "prompt_action_motion_resumed",
+              "direction": "down",
+              "score": 97,
+              "motion": 0.139326
             }
           ],
-          "last_prompt_text": "=\n\nmai\n\ni\n\nol\n",
-          "latched_prompt": null,
-          "prompt_misses": 15,
-          "last_score": 158,
-          "max_bootstrap_score": 158,
-          "valid_score_reads": 170,
-          "motion_median": 0.155061
+          "last_prompt_text": "tow\n\npresgnr\n\ny\n\ndown\n\ni\n\ni\n\n>\n",
+          "pending_direction": "down",
+          "prompt_armed": false,
+          "last_score": 97,
+          "max_bootstrap_score": 97,
+          "valid_score_reads": 191,
+          "motion_median": 0.138682
         },
         "reason": "startup_or_restart_failed"
       }
