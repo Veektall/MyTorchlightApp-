@@ -91,6 +91,7 @@ jobs:
             /tmp/subway-stage10-semantic/stage10_collection_summary.json
             /tmp/subway-stage10-semantic/stage10_episodes.json
             /tmp/subway-stage10-semantic/stage10_examples.jsonl
+            /tmp/subway-stage10-semantic/examples
             /tmp/subway-stage10-semantic/*-startup.json
             /tmp/subway-stage10-semantic/*-actions.json
             /tmp/subway-stage10-semantic/stage10_temporal_summary.json
