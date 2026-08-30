@@ -1,0 +1,72 @@
+{
+  "workflow": "subway-stage15",
+  "run_id": "33315591694",
+  "head_sha": "2afa983422bda7c93cac1a75d141e53b468943d5",
+  "stage13_completed": true,
+  "stage14_completed": true,
+  "stage15": {
+    "stage": "15-pixel-evaluator-repair-v1",
+    "policy_contract": "pixel-policy-contract-v1.1",
+    "official_game": "https://poki.com/en/g/subway-surfers",
+    "watchdog_is_safety_abort_not_benchmark_horizon_sec": 180.0,
+    "results": [
+      {
+        "policy": "stay",
+        "episode": 1,
+        "valid": false,
+        "reason": "official Pixi canvas not found"
+      }
+    ],
+    "aggregate": {
+      "stay": {
+        "valid_episodes": 0,
+        "mean_score": null,
+        "median_score": null,
+        "max_score": null,
+        "mean_survival_sec": null,
+        "deaths": 0
+      },
+      "always_jump": {
+        "valid_episodes": 0,
+        "mean_score": null,
+        "median_score": null,
+        "max_score": null,
+        "mean_survival_sec": null,
+        "deaths": 0
+      },
+      "corridor_cv": {
+        "valid_episodes": 0,
+        "mean_score": null,
+        "median_score": null,
+        "max_score": null,
+        "mean_survival_sec": null,
+        "deaths": 0
+      },
+      "learned": {
+        "valid_episodes": 0,
+        "mean_score": null,
+        "median_score": null,
+        "max_score": null,
+        "mean_survival_sec": null,
+        "deaths": 0
+      }
+    },
+    "normal_endless_play_verified": false,
+    "pixel_score_metric_available": false,
+    "run_to_verified_death": false,
+    "evaluator_discriminative": false,
+    "benchmark_complete": false,
+    "learned_beats_both_cheap_baselines": false,
+    "competence_claim": false,
+    "highest_learned_score": null,
+    "highest_score_video": null,
+    "geometry_comparison_started": false,
+    "completed": false
+  },
+  "stage15_completed": false,
+  "all_requested_stages_completed": false,
+  "competence_claim": false,
+  "highest_learned_score": null,
+  "highest_score_video": null,
+  "geometry_comparison_started": false
+}
