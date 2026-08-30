@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage15",
-  "run_id": "33318228475",
-  "head_sha": "8b60eeedb7e6e23577a7939619f26d17db226af0",
+  "run_id": "33318509415",
+  "head_sha": "50de367d61072c1d3e8112572c50bc6de45b077c",
   "stage13_completed": true,
   "stage14_completed": true,
   "stage15": {
@@ -15,62 +15,255 @@
         "episode": 1,
         "valid": false,
         "startup": {
-          "ok": false,
-          "reason": "tutorial_feedback_state_machine_timeout",
-          "tutorial_directions_seen": [],
+          "ok": true,
+          "tutorial_completed": true,
+          "tutorial_steps_completed": 3,
           "tutorial_events": [
             {
-              "t": 44.37,
+              "press_t": 23.74,
+              "stage": 0,
               "direction": "up",
-              "result": "stall_probe_press",
               "score": 43
             },
             {
-              "t": 61.3,
+              "press_t": 24.69,
+              "stage": 0,
+              "direction": "up",
+              "score": 43
+            },
+            {
+              "press_t": 26.21,
+              "stage": 0,
+              "direction": "up",
+              "score": 43
+            },
+            {
+              "press_t": 27.29,
+              "stage": 0,
+              "direction": "up",
+              "score": 43
+            },
+            {
+              "t": 28.37,
+              "stage": 0,
+              "direction": "up",
+              "result": "score_resumed",
+              "from": 43,
+              "to": 47
+            },
+            {
+              "press_t": 31.19,
+              "stage": 1,
               "direction": "down",
-              "result": "stall_probe_press",
-              "score": 43
+              "score": 53
             },
             {
-              "t": 71.56,
+              "t": 32.27,
+              "stage": 1,
+              "direction": "down",
+              "result": "score_resumed",
+              "from": 53,
+              "to": 61
+            },
+            {
+              "press_t": 34.12,
+              "stage": 2,
               "direction": "left",
-              "result": "stall_probe_press",
-              "score": 43
+              "score": 61
             },
             {
-              "t": 82.96,
-              "direction": "right",
-              "result": "stall_probe_press",
-              "score": 43
+              "press_t": 35.61,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
             },
             {
-              "t": 95.39,
-              "direction": "up",
-              "result": "stall_probe_press",
-              "score": 43
+              "press_t": 36.71,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
             },
             {
-              "t": 108.4,
-              "direction": "down",
-              "result": "stall_probe_press",
-              "score": 43
+              "press_t": 37.73,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
+            },
+            {
+              "press_t": 38.96,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
+            },
+            {
+              "press_t": 41.27,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
+            },
+            {
+              "press_t": 42.33,
+              "stage": 2,
+              "direction": "left",
+              "score": 61
+            },
+            {
+              "t": 43.35,
+              "stage": 2,
+              "direction": "left",
+              "result": "score_resumed",
+              "from": 61,
+              "to": 900061
             }
           ],
-          "last_prompt_text": "- 7 \\\n.\\ i\npress'arrow)key up\nx ny\nz q >\n press'arrow'ke\n\ny up\n ly\n\n3 =\u2014\u2014\n\nte)\n\n:\n need .\n_\u2014\u2014 a, c\nee oe nn\n_ press'arrow'key up\n, -\u2014| (\n| \u2014\u2014* \\\n\u2014 \\\n be\n\n-_- \u2014\n\n\u2014_\n\nwe\n\ndw =\n\nfitagt daas\n\n=_\u2014\n\npress'arrow'key up\n\n|\n\nit |\n\n_\u2014____|\n\nil\n \u2014\n\nwe\n\ndw =\n\npres\n\nfitagt daas\n\n=_\u2014\n\nrrow'key up\n\nfc\n\ni\n\n=\n",
-          "last_score": 43,
-          "valid_score_reads": 7,
-          "recent_score_values": [
-            43,
-            43,
-            43,
-            43,
-            43,
-            43,
-            43
-          ],
-          "motion_median": 0.162504
+          "score_at_handoff": 900061,
+          "recent_score_growth": 900000,
+          "motion_median": 0.124246,
+          "valid_score_reads": 22,
+          "policy_clock_reset_after_tutorial": true,
+          "score_hud_xy": [
+            0.9275,
+            0.0675
+          ]
         },
-        "reason": "startup_or_score_lock_failed",
+        "reason": "watchdog_abort_before_verified_death",
+        "death_detected": false,
+        "death_reason": null,
+        "survival_sec": 181.505,
+        "max_pixel_score": 900061,
+        "score_reads": [
+          [
+            77.62,
+            900061
+          ],
+          [
+            93.76,
+            900061
+          ],
+          [
+            97.18,
+            900061
+          ],
+          [
+            98.59,
+            900061
+          ],
+          [
+            99.92,
+            900061
+          ],
+          [
+            101.96,
+            900061
+          ],
+          [
+            105.37,
+            900061
+          ],
+          [
+            106.22,
+            900061
+          ],
+          [
+            114.54,
+            900061
+          ],
+          [
+            118.35,
+            900061
+          ],
+          [
+            120.01,
+            900061
+          ],
+          [
+            129.31,
+            900061
+          ],
+          [
+            132.92,
+            900061
+          ],
+          [
+            136.96,
+            900061
+          ],
+          [
+            139.31,
+            900061
+          ],
+          [
+            140.57,
+            900061
+          ],
+          [
+            145.34,
+            900061
+          ],
+          [
+            148.3,
+            900061
+          ],
+          [
+            153.52,
+            900061
+          ],
+          [
+            155.31,
+            900061
+          ],
+          [
+            156.74,
+            900061
+          ],
+          [
+            161.96,
+            900061
+          ],
+          [
+            165.18,
+            900061
+          ],
+          [
+            166.92,
+            900061
+          ],
+          [
+            169.14,
+            900061
+          ],
+          [
+            170.45,
+            900061
+          ],
+          [
+            173.26,
+            900061
+          ],
+          [
+            175.24,
+            900061
+          ],
+          [
+            177.35,
+            900061
+          ],
+          [
+            179.23,
+            900061
+          ]
+        ],
+        "action_counts": {
+          "stay": 82,
+          "left": 0,
+          "right": 0,
+          "jump": 0,
+          "roll": 0
+        },
+        "mean_confidence": 1.0,
+        "score_metric_available": true,
+        "score_source": "rendered_canvas_pixels_ocr_monotonic_track",
+        "policy_input": "pixels_or_time_baseline",
         "video_file": "stay_ep1.webm"
       }
     ],
