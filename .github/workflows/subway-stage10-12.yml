@@ -21,6 +21,9 @@ concurrency:
 
 jobs:
   stage10-through-12:
+    # This one commit exists only to yield the runner to the frozen-corpus A/B retry.
+    # All subsequent commits run normally.
+    if: github.event.head_commit.message != 'ci: yield runner to frozen Stage 10 retry'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
