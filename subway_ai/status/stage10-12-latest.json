@@ -1,7 +1,7 @@
 {
   "workflow": "subway-stage10-12",
-  "run_id": "33285857731",
-  "head_sha": "d848686c7969e4dae50b19d21f4775d5806a9109",
+  "run_id": "33310571627",
+  "head_sha": "021ecb997d69f8a78f0afd65c02e348869d92caf",
   "steps": {
     "stage10_collect": "success",
     "stage10_train": "failure",
@@ -12,19 +12,19 @@
     "stage": "10-semantic-pixel-teacher-collection-v1",
     "requested_episodes": 8,
     "accepted_episodes": 8,
-    "examples_total": 427,
+    "examples_total": 428,
     "action_counts": {
-      "stay": 150,
-      "left": 109,
-      "right": 110,
-      "jump": 28,
-      "roll": 30
+      "stay": 131,
+      "left": 119,
+      "right": 119,
+      "jump": 31,
+      "roll": 28
     },
     "episode_coverage_by_action": {
       "stay": 8,
       "left": 8,
       "right": 8,
-      "jump": 7,
+      "jump": 8,
       "roll": 8
     },
     "acceptance_contract": {
@@ -46,20 +46,31 @@
     "teacher": "pixel danger + upper/lower risk anomalies + prior-input-derived lane only"
   },
   "stage10_temporal": {
-    "stage": "10A-future-consistency-pretraining-v4",
-    "train_examples": 319,
-    "validation_examples": 108,
+    "stage": "10A-masked-temporal-reconstruction-v5",
+    "train_examples": 321,
+    "validation_examples": 107,
     "validation_episode_ids": [
-      "official_stage10_ep04",
-      "official_stage10_ep08"
+      "official_stage10_ep02",
+      "official_stage10_ep07"
     ],
-    "future_consistency_accuracy": 0.4491,
-    "balanced_random_candidate_baseline": 0.5,
-    "forward_reversed_accuracy": 0.4954,
-    "temporal_direction_chance_baseline": 0.5,
+    "best_epoch": 6,
+    "masked_frame_index": 4,
+    "objective": "reconstruct masked middle frame as learned residual over two-neighbour interpolation",
+    "target_representation": "fixed 6x10 RGB spatial grid",
+    "validation": {
+      "model_coarse_l1": 0.071132,
+      "interpolation_coarse_l1": 0.071517,
+      "persistence_coarse_l1": 0.076638,
+      "interpolation_raw_pixel_l1": 0.105947,
+      "persistence_raw_pixel_l1": 0.111633
+    },
+    "raw_interpolation_improvement_over_persistence": 0.0509,
+    "learned_coarse_improvement_over_persistence": 0.0718,
+    "learned_residual_improvement_over_interpolation": 0.0054,
     "acceptance_gate": {
-      "future_consistency_min": 0.65,
-      "direction_min": 0.7
+      "raw_interpolation_improvement_over_persistence_min": 0.08,
+      "learned_coarse_improvement_over_persistence_min": 0.08,
+      "learned_model_may_not_degrade_interpolation_by_more_than": 0.01
     },
     "policy_labels_used": false,
     "privileged_game_state_used": false,
