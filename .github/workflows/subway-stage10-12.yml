@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: subway-stage10-12-${{ github.ref }}
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   stage10-through-12:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
       LIBGL_ALWAYS_SOFTWARE: '1'
@@ -29,6 +29,8 @@ jobs:
       STAGE10_EPISODE_SECONDS: '42'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: subway-video-corpus
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -40,49 +42,70 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg mesa-utils libgl1-mesa-dri xvfb
           python -m pip install --upgrade pip
-          pip install numpy pillow torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pillow
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install playwright==1.55.0
           npm init -y >/dev/null 2>&1
           npm install --no-save playwright@1.55.0 sharp@0.34.3
           npx playwright install --with-deps chromium
-          python -m playwright install chromium
       - name: Stage 10 collect direct-canvas semantic pixel-teacher episodes
+        id: s10collect
+        continue-on-error: true
         run: |
-          set -euxo pipefail
           rm -rf /tmp/subway-stage10-semantic /tmp/subway-stage11 /tmp/subway-stage12
           mkdir -p /tmp/subway-stage10-semantic /tmp/subway-stage11 /tmp/subway-stage12
-          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            node subway_ai/scripts/collect_stage10_semantic_teacher.js /tmp/subway-stage10-semantic
-          cat /tmp/subway-stage10-semantic/stage10_collection_summary.json
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' node subway_ai/scripts/collect_stage10_semantic_teacher.js /tmp/subway-stage10-semantic
       - name: Stage 10 temporal pretraining and held-out semantic imitation gate
-        run: |
-          set -euxo pipefail
-          python subway_ai/scripts/train_stage10_v4.py \
-            --root /tmp/subway-stage10-semantic \
-            --pretrain-epochs 18 \
-            --policy-epochs 32
-          cat /tmp/subway-stage10-semantic/stage10_temporal_summary.json
-          cat /tmp/subway-stage10-semantic/stage10_policy_summary.json
+        id: s10train
+        if: steps.s10collect.outcome == 'success'
+        continue-on-error: true
+        run: python subway_ai/scripts/train_stage10_v4.py --root /tmp/subway-stage10-semantic --pretrain-epochs 18 --policy-epochs 32
       - name: Stage 11 closed-loop official-game benchmark
+        id: s11
+        if: steps.s10train.outcome == 'success'
+        continue-on-error: true
         run: |
-          set -euxo pipefail
-          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            python subway_ai/scripts/evaluate_stage11_closed_loop.py \
-              --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt \
-              --out /tmp/subway-stage11 \
-              --episodes 2 \
-              --max-seconds 28
-          cat /tmp/subway-stage11/stage11_summary.json
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/evaluate_stage11_closed_loop.py --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt --out /tmp/subway-stage11 --episodes 2 --max-seconds 28
       - name: Stage 12 learned self-play failure buffer
+        id: s12
+        if: steps.s10train.outcome == 'success'
+        continue-on-error: true
         run: |
-          set -euxo pipefail
-          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            python subway_ai/scripts/collect_stage12_failure_buffer.py \
-              --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt \
-              --out /tmp/subway-stage12 \
-              --episodes 3 \
-              --max-seconds 32
-          cat /tmp/subway-stage12/stage12_summary.json
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python subway_ai/scripts/collect_stage12_failure_buffer.py --checkpoint /tmp/subway-stage10-semantic/stage10_imitation_policy.pt --out /tmp/subway-stage12 --episodes 3 --max-seconds 32
+      - name: Publish durable Stage 10-12 status
+        if: always()
+        env:
+          S10C: ${{ steps.s10collect.outcome }}
+          S10T: ${{ steps.s10train.outcome }}
+          S11: ${{ steps.s11.outcome }}
+          S12: ${{ steps.s12.outcome }}
+        run: |
+          mkdir -p subway_ai/status
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          def read(p):
+              p=Path(p)
+              if not p.exists(): return None
+              try: return json.loads(p.read_text())
+              except Exception as e: return {'parse_error':str(e)}
+          temporal=read('/tmp/subway-stage10-semantic/stage10_temporal_summary.json')
+          policy=read('/tmp/subway-stage10-semantic/stage10_policy_summary.json')
+          s11=read('/tmp/subway-stage11/stage11_summary.json')
+          s12=read('/tmp/subway-stage12/stage12_summary.json')
+          out={'workflow':'subway-stage10-12','run_id':os.getenv('GITHUB_RUN_ID'),'head_sha':os.getenv('GITHUB_SHA'),'steps':{'stage10_collect':os.getenv('S10C'),'stage10_train':os.getenv('S10T'),'stage11':os.getenv('S11'),'stage12':os.getenv('S12')},'stage10_collection':read('/tmp/subway-stage10-semantic/stage10_collection_summary.json'),'stage10_temporal':temporal,'stage10_policy':policy,'stage11':s11,'stage12':s12}
+          out['stage10_completed']=bool(temporal and temporal.get('accepted') and policy and policy.get('accepted'))
+          out['stage11_completed']=bool(s11 and s11.get('benchmark_complete'))
+          out['stage12_completed']=bool(s12 and s12.get('completed'))
+          out['learned_policy_competence_claim']=bool(s11 and s11.get('competence_claim'))
+          out['all_requested_stages_completed']=out['stage10_completed'] and out['stage11_completed'] and out['stage12_completed']
+          Path('subway_ai/status/stage10-12-latest.json').write_text(json.dumps(out,indent=2))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add subway_ai/status/stage10-12-latest.json
+          git commit -m 'status: publish Subway stages 10-12 result' || true
+          git push origin HEAD:subway-video-corpus
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -104,3 +127,11 @@ jobs:
             /tmp/subway-stage12/failure_examples
           retention-days: 3
           if-no-files-found: warn
+      - name: Enforce requested-stage completion
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('subway_ai/status/stage10-12-latest.json'))
+          raise SystemExit(0 if p['all_requested_stages_completed'] else 41)
+          PY
