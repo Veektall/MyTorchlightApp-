@@ -1,0 +1,119 @@
+name: Subway Stages 13-14
+on:
+  push:
+    branches: [subway-video-corpus]
+    paths:
+      - 'subway_ai/scripts/train_stage13_failure_correction.py'
+      - 'subway_ai/scripts/evaluate_stage14_long_horizon.py'
+      - '.github/workflows/subway-stage13-14.yml'
+      - 'subway_ai/stage13-14-trigger.txt'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  stage13-14:
+    runs-on: ubuntu-24.04
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      STAGE10_SOURCE_RUN: '33285857731'
+      STAGE10_ACCEPTED_RUN: '33311502901'
+      STAGE12_SOURCE_RUN: '33312508635'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: subway-video-corpus
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install training and live runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri
+          python -m pip install --upgrade pip
+          pip install numpy pillow
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Download frozen Stage-10 corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: subway-stages10-12-pixel-policy
+          path: /tmp/stage10-source
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STAGE10_SOURCE_RUN }}
+      - name: Download accepted Stage-10 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: subway-stages10-12-frozen-retry
+          path: /tmp/stage10-accepted
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STAGE10_ACCEPTED_RUN }}
+      - name: Download Stage-12 failure buffer
+        uses: actions/download-artifact@v4
+        with:
+          name: subway-stages11-12-runtime-v2
+          path: /tmp/stage12-source
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STAGE12_SOURCE_RUN }}
+      - name: Locate inputs
+        run: |
+          echo "BASE_ROOT=$(dirname $(find /tmp/stage10-source -name stage10_examples.jsonl | head -1))" >> "$GITHUB_ENV"
+          echo "FAIL_ROOT=$(dirname $(find /tmp/stage12-source -name stage12_failure_examples.jsonl | head -1))" >> "$GITHUB_ENV"
+          echo "BASE_CKPT=$(find /tmp/stage10-accepted -name stage10_imitation_policy.pt | head -1)" >> "$GITHUB_ENV"
+      - name: Stage 13 targeted failure-buffer retraining
+        run: |
+          mkdir -p /tmp/subway-stage13
+          python subway_ai/scripts/train_stage13_failure_correction.py \
+            --base-root "$BASE_ROOT" --failure-root "$FAIL_ROOT" --checkpoint "$BASE_CKPT" \
+            --out /tmp/subway-stage13 --epochs 24
+      - name: Stage 14 longer official-game benchmark
+        run: |
+          mkdir -p /tmp/subway-stage14
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
+            python subway_ai/scripts/evaluate_stage14_long_horizon.py \
+            --checkpoint /tmp/subway-stage13/stage13_policy.pt --out /tmp/subway-stage14 \
+            --episodes 3 --max-seconds 60
+      - name: Publish durable Stage 13-14 status
+        if: always()
+        run: |
+          mkdir -p subway_ai/status
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          def read(p):
+              p=Path(p)
+              if not p.exists(): return None
+              try:return json.loads(p.read_text())
+              except Exception as e:return {'parse_error':str(e)}
+          s13=read('/tmp/subway-stage13/stage13_summary.json');s14=read('/tmp/subway-stage14/stage14_summary.json')
+          out={'workflow':'subway-stage13-14','run_id':os.getenv('GITHUB_RUN_ID'),'head_sha':os.getenv('GITHUB_SHA'),'stage13':s13,'stage14':s14}
+          out['stage13_completed']=bool(s13 and s13.get('accepted'))
+          out['stage14_completed']=bool(s14 and s14.get('completed'))
+          out['learned_policy_long_horizon_competence_claim']=bool(s14 and s14.get('competence_claim'))
+          out['all_requested_stages_completed']=out['stage13_completed'] and out['stage14_completed']
+          Path('subway_ai/status/stage13-14-latest.json').write_text(json.dumps(out,indent=2))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add subway_ai/status/stage13-14-latest.json
+          git commit -m 'status: publish Stages 13-14' || true
+          git pull --rebase origin subway-video-corpus || true
+          git push origin HEAD:subway-video-corpus
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subway-stages13-14
+          retention-days: 5
+          path: |
+            /tmp/subway-stage13/stage13_summary.json
+            /tmp/subway-stage13/stage13_policy.pt
+            /tmp/subway-stage14/stage14_summary.json
+      - name: Enforce requested-stage completion
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('subway_ai/status/stage13-14-latest.json'))
+          raise SystemExit(0 if p['all_requested_stages_completed'] else 51)
+          PY
