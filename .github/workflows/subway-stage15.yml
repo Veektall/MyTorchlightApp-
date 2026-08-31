@@ -27,6 +27,7 @@ on:
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v22.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v23.py'
       - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v24.py'
+      - 'subway_ai/scripts/evaluate_stage15_pixel_evaluator_v25.py'
       - '.github/workflows/subway-stage15.yml'
       - 'subway_ai/stage15-trigger.txt'
   workflow_dispatch:
@@ -36,7 +37,7 @@ permissions:
 jobs:
   stage15:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       LIBGL_ALWAYS_SOFTWARE: '1'
       STAGE13_SOURCE_RUN: '33313827136'
@@ -71,7 +72,7 @@ jobs:
         run: |
           mkdir -p /tmp/subway-stage15
           xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' \
-            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v24.py \
+            python subway_ai/scripts/evaluate_stage15_pixel_evaluator_v25.py \
             --checkpoint "$STAGE13_CKPT" --out /tmp/subway-stage15 \
             --learned-episodes 3 --watchdog-seconds 180
       - name: Publish durable Stage 15 status
@@ -84,13 +85,15 @@ jobs:
           p=Path('/tmp/subway-stage15/stage15_summary.json')
           s=json.loads(p.read_text()) if p.exists() else None
           out={'workflow':'subway-stage15','run_id':os.getenv('GITHUB_RUN_ID'),'head_sha':os.getenv('GITHUB_SHA'),'stage13_completed':True,'stage14_completed':True,'stage15':s,'stage15_completed':bool(s and s.get('completed')),'all_requested_stages_completed':bool(s and s.get('completed')),'competence_claim':bool(s and s.get('competence_claim')),'highest_learned_score':s.get('highest_learned_score') if s else None,'highest_score_video':s.get('highest_score_video') if s else None,'geometry_comparison_started':False}
-          Path('subway_ai/status/stage15-latest.json').write_text(json.dumps(out,indent=2))
+          Path('/tmp/stage15-latest.json').write_text(json.dumps(out,indent=2))
           PY
           git config user.name github-actions[bot]
           git config user.email 41898282+Veektall@users.noreply.github.com
+          git fetch origin subway-video-corpus
+          git reset --hard origin/subway-video-corpus
+          cp /tmp/stage15-latest.json subway_ai/status/stage15-latest.json
           git add subway_ai/status/stage15-latest.json
           git commit -m 'status: publish Stage 15 evaluator result' || true
-          git pull --rebase origin subway-video-corpus || true
           git push origin HEAD:subway-video-corpus
       - name: Upload Stage 15 gameplay and evidence
         if: always()
