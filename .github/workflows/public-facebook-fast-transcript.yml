@@ -1,0 +1,124 @@
+name: Public Facebook Fast Transcript
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
+jobs:
+  fast:
+    if: github.actor == github.repository_owner && startsWith(github.event.issue.title, 'public-facebook-fast:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Parse
+        id: req
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json,os,re
+          d=json.loads(os.environ['BODY']); u=d['url'].strip(); j=d['job_id'].strip()
+          if not u.startswith('https://www.facebook.com/'): raise SystemExit('Facebook URL required')
+          if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',j): raise SystemExit('bad job id')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write(f'url={u}\njob_id={j}\n')
+          PY
+      - name: Install
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install -q --upgrade pip 'yt-dlp[default,curl-cffi]' fdown-api faster-whisper
+      - name: Download exact source
+        env:
+          URL: ${{ steps.req.outputs.url }}
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -u
+          mkdir -p "work/$JOB_ID" "out/$JOB_ID"
+          ok=0
+          if yt-dlp --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >"out/$JOB_ID/download.log" 2>&1; then ok=1; fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            if yt-dlp --impersonate chrome --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >>"out/$JOB_ID/download.log" 2>&1; then ok=1; fi
+          fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            python - <<'PY' >>"out/$JOB_ID/download.log" 2>&1
+          import os
+          from fdown_api import Fdown
+          j=os.environ['JOB_ID']; f=Fdown(timeout=90); l=f.get_links(os.environ['URL'])
+          f.download_video(l,quality='best' if getattr(l,'hdlink',None) else 'normal',filename='source.mp4',dir=f'work/{j}',progress_bar=False,quiet=True)
+          PY
+          fi
+          SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -1)"
+          test -n "$SRC"
+          if [ "$SRC" != "work/$JOB_ID/source.mp4" ]; then ffmpeg -y -v error -i "$SRC" -map 0 -c copy "work/$JOB_ID/source.mp4" || ffmpeg -y -v error -i "$SRC" -c:v libx264 -crf 18 -c:a aac "work/$JOB_ID/source.mp4"; fi
+          ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/source.mp4" > "out/$JOB_ID/ffprobe.json"
+          sha256sum "work/$JOB_ID/source.mp4" > "out/$JOB_ID/SHA256SUMS.txt"
+      - name: Fast timestamped transcript
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          ffmpeg -y -v error -i "work/$JOB_ID/source.mp4" -vn -ac 1 -ar 16000 "work/$JOB_ID/audio.wav"
+          python - <<'PY'
+          import os
+          from faster_whisper import WhisperModel
+          j=os.environ['JOB_ID']; m=WhisperModel('base.en',device='cpu',compute_type='int8')
+          segs,_=m.transcribe(f'work/{j}/audio.wav',vad_filter=True,beam_size=3)
+          def ts(s):
+              h=int(s//3600); s-=h*3600; mi=int(s//60); s-=mi*60; return f'{h:02d}:{mi:02d}:{s:06.3f}'
+          with open(f'out/{j}/transcript.txt','w',encoding='utf-8') as f:
+              for x in segs:
+                  t=' '.join(x.text.split())
+                  if t: f.write(f'[{ts(x.start)} --> {ts(x.end)}] {t}\n')
+          open(f'out/{j}/transcript-source.txt','w').write('faster-whisper-base.en\n')
+          PY
+          test -s "out/$JOB_ID/transcript.txt"
+      - name: Manifest
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+          URL: ${{ steps.req.outputs.url }}
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          j=os.environ['JOB_ID']; p=json.load(open(f'out/{j}/ffprobe.json')); f=p['format']
+          d={'job_id':j,'source_url':os.environ['URL'],'duration_seconds':float(f.get('duration',0)),'size_bytes':int(f.get('size',0)),'source_sha256':open(f'out/{j}/SHA256SUMS.txt').read().split()[0],'transcript_source':'faster-whisper-base.en','workflow_run_id':os.environ['GITHUB_RUN_ID']}
+          pathlib.Path(f'out/{j}/manifest.json').write_text(json.dumps(d,indent=2))
+          PY
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-${{ steps.req.outputs.job_id }}
+          path: |
+            work/${{ steps.req.outputs.job_id }}/source.mp4
+            out/${{ steps.req.outputs.job_id }}/ffprobe.json
+            out/${{ steps.req.outputs.job_id }}/SHA256SUMS.txt
+          retention-days: 3
+          compression-level: 0
+      - name: Publish transcript
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          D="public-facebook-jobs/$JOB_ID"; mkdir -p "$D"
+          cp "out/$JOB_ID/transcript.txt" "$D/transcript.txt"
+          cp "out/$JOB_ID/transcript-source.txt" "$D/transcript-source.txt"
+          cp "out/$JOB_ID/manifest.json" "$D/manifest.json"
+          cp "out/$JOB_ID/ffprobe.json" "$D/ffprobe.json"
+          cp "out/$JOB_ID/SHA256SUMS.txt" "$D/SHA256SUMS.txt"
+          git config user.name chatgpt-actions; git config user.email actions@users.noreply.github.com
+          git add "$D"; git commit -m "Publish fast Facebook transcript $JOB_ID"; git push
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Fast Facebook transcript finished: ${{ job.status }}. Run ${{ github.run_id }}"
