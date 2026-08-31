@@ -1,7 +1,7 @@
 # AGENT-01 — Tutorial Prompt Vision
 
 Role: BUILD/RESEARCH WORKER
-Status: READY
+Status: IN_PROGRESS
 Control room: issue #140
 Worker branch: `swarm/SWARM-2026-STAGE15-01/AGENT-01`
 
