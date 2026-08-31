@@ -17,7 +17,7 @@ jobs:
   ingest:
     if: github.actor == github.repository_owner && startsWith(github.event.issue.title, 'public-facebook-clips:')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +45,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           python -m pip install --upgrade pip
-          python -m pip install --upgrade 'yt-dlp[default,curl-cffi]' fdown-api webvtt-py faster-whisper
+          python -m pip install --upgrade 'yt-dlp[default,curl-cffi]' fdown-api
 
       - name: Download exact public source
         env:
@@ -72,62 +72,20 @@ jobs:
           url=os.environ['URL']; job=os.environ['JOB_ID']
           f=Fdown(timeout=90); links=f.get_links(url)
           q='best' if getattr(links,'hdlink',None) else 'normal'
-          f.download_video(links, quality=q, filename='source.mp4', dir=f'work/{job}', progress_bar=False, quiet=True)
+          f.download_video(links,quality=q,filename='source.mp4',dir=f'work/{job}',progress_bar=False,quiet=True)
           PY
             then ok=1; fi
           fi
           SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -n1 || true)"
-          test "$ok" -eq 1
-          test -n "$SRC"
-          test -s "$SRC"
+          test "$ok" -eq 1; test -n "$SRC"; test -s "$SRC"
           if [ "$SRC" != "work/$JOB_ID/source.mp4" ]; then
             ffmpeg -y -v error -i "$SRC" -map 0 -c copy "work/$JOB_ID/source.mp4" || ffmpeg -y -v error -i "$SRC" -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k "work/$JOB_ID/source.mp4"
           fi
           test -s "work/$JOB_ID/source.mp4"
-          ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/ffprobe.json" > /dev/null 2>&1 || true
           ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/source.mp4" > "out/$JOB_ID/ffprobe.json"
           sha256sum "work/$JOB_ID/source.mp4" > "out/$JOB_ID/SHA256SUMS.txt"
 
-      - name: Get timestamped transcript
-        env:
-          URL: ${{ steps.req.outputs.url }}
-          JOB_ID: ${{ steps.req.outputs.job_id }}
-        run: |
-          set -euo pipefail
-          mkdir -p "work/$JOB_ID/captions"
-          yt-dlp --skip-download --write-subs --write-auto-subs --sub-langs 'en.*,en' --sub-format 'vtt/best' -o "work/$JOB_ID/captions/caption.%(ext)s" "$URL" >"out/$JOB_ID/caption-fetch.log" 2>&1 || true
-          VTT="$(find "work/$JOB_ID/captions" -type f -name '*.vtt' -size +0c | head -n1 || true)"
-          if [ -n "$VTT" ]; then
-            cp "$VTT" "out/$JOB_ID/platform-caption.vtt"
-            python - <<'PY'
-          import os,re,webvtt
-          j=os.environ['JOB_ID']; p=f'out/{j}/platform-caption.vtt'; lines=[]; last=None
-          for c in webvtt.read(p):
-              t=re.sub(r'<[^>]+>','',c.text).replace('\n',' ').strip(); t=re.sub(r'\s+',' ',t)
-              if not t or t==last: continue
-              lines.append(f'[{c.start} --> {c.end}] {t}'); last=t
-          open(f'out/{j}/transcript.txt','w',encoding='utf-8').write('\n'.join(lines)+'\n')
-          open(f'out/{j}/transcript-source.txt','w').write('platform-caption\n')
-          PY
-          else
-            ffmpeg -y -v error -i "work/$JOB_ID/source.mp4" -vn -ac 1 -ar 16000 "work/$JOB_ID/audio.wav"
-            python - <<'PY'
-          import os
-          from faster_whisper import WhisperModel
-          j=os.environ['JOB_ID']; m=WhisperModel('tiny.en',device='cpu',compute_type='int8')
-          segs,info=m.transcribe(f'work/{j}/audio.wav',vad_filter=True,beam_size=2)
-          def ts(s):
-              h=int(s//3600); s-=h*3600; mi=int(s//60); s-=mi*60; return f'{h:02d}:{mi:02d}:{s:06.3f}'
-          with open(f'out/{j}/transcript.txt','w',encoding='utf-8') as f:
-              for x in segs:
-                  t=' '.join(x.text.split())
-                  if t: f.write(f'[{ts(x.start)} --> {ts(x.end)}] {t}\n')
-          open(f'out/{j}/transcript-source.txt','w').write('faster-whisper-tiny.en\n')
-          PY
-          fi
-          test -s "out/$JOB_ID/transcript.txt"
-
-      - name: Build manifest
+      - name: Build source manifest
         env:
           JOB_ID: ${{ steps.req.outputs.job_id }}
           URL: ${{ steps.req.outputs.url }}
@@ -135,11 +93,11 @@ jobs:
           python - <<'PY'
           import json,os,pathlib
           j=os.environ['JOB_ID']; p=json.load(open(f'out/{j}/ffprobe.json')); fmt=p['format']
-          d={'job_id':j,'source_url':os.environ['URL'],'duration_seconds':float(fmt.get('duration',0)),'size_bytes':int(fmt.get('size',0)),'source_sha256':open(f'out/{j}/SHA256SUMS.txt').read().split()[0],'transcript_source':open(f'out/{j}/transcript-source.txt').read().strip(),'workflow_run_id':os.environ['GITHUB_RUN_ID']}
+          d={'job_id':j,'source_url':os.environ['URL'],'duration_seconds':float(fmt.get('duration',0)),'size_bytes':int(fmt.get('size',0)),'source_sha256':open(f'out/{j}/SHA256SUMS.txt').read().split()[0],'workflow_run_id':os.environ['GITHUB_RUN_ID']}
           pathlib.Path(f'out/{j}/manifest.json').write_text(json.dumps(d,indent=2),encoding='utf-8')
           PY
 
-      - name: Upload source artifact
+      - name: Upload verified source artifact
         uses: actions/upload-artifact@v4
         with:
           name: source-${{ steps.req.outputs.job_id }}
@@ -147,25 +105,23 @@ jobs:
             work/${{ steps.req.outputs.job_id }}/source.mp4
             out/${{ steps.req.outputs.job_id }}/ffprobe.json
             out/${{ steps.req.outputs.job_id }}/SHA256SUMS.txt
+            out/${{ steps.req.outputs.job_id }}/manifest.json
+          if-no-files-found: error
           retention-days: 3
           compression-level: 0
 
-      - name: Publish transcript for clip selection
+      - name: Publish source metadata
         env:
           JOB_ID: ${{ steps.req.outputs.job_id }}
         run: |
           set -euo pipefail
-          mkdir -p "public-facebook-jobs/$JOB_ID"
-          cp "out/$JOB_ID/transcript.txt" "public-facebook-jobs/$JOB_ID/transcript.txt"
-          cp "out/$JOB_ID/transcript-source.txt" "public-facebook-jobs/$JOB_ID/transcript-source.txt"
-          cp "out/$JOB_ID/manifest.json" "public-facebook-jobs/$JOB_ID/manifest.json"
-          cp "out/$JOB_ID/ffprobe.json" "public-facebook-jobs/$JOB_ID/ffprobe.json"
-          cp "out/$JOB_ID/SHA256SUMS.txt" "public-facebook-jobs/$JOB_ID/SHA256SUMS.txt"
-          cp "out/$JOB_ID/download.log" "public-facebook-jobs/$JOB_ID/download.log"
-          git config user.name 'chatgpt-actions'
-          git config user.email 'actions@users.noreply.github.com'
-          git add "public-facebook-jobs/$JOB_ID"
-          git commit -m "Publish Facebook transcript $JOB_ID"
+          D="public-facebook-jobs/$JOB_ID"; mkdir -p "$D"
+          cp "out/$JOB_ID/manifest.json" "$D/manifest.json"
+          cp "out/$JOB_ID/ffprobe.json" "$D/ffprobe.json"
+          cp "out/$JOB_ID/SHA256SUMS.txt" "$D/SHA256SUMS.txt"
+          cp "out/$JOB_ID/download.log" "$D/download.log"
+          git config user.name chatgpt-actions; git config user.email actions@users.noreply.github.com
+          git add "$D"; git commit -m "Publish verified Facebook source metadata $JOB_ID"
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin HEAD:"$GITHUB_REF_NAME"
 
@@ -175,5 +131,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           JOB_ID: ${{ steps.req.outputs.job_id }}
-        run: |
-          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Public Facebook ingest finished with status: ${{ job.status }}. Job: $JOB_ID. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Public Facebook source-only ingest finished with status: ${{ job.status }}. Job: $JOB_ID. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
