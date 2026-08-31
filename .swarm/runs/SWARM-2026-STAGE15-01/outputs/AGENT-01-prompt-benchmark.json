@@ -1,0 +1,55 @@
+{
+  "detector": "stage15_prompt_template_detector",
+  "ground_truth": "manually curated visible prompt / prompt-absent frames from v24 and v25 recordings",
+  "v24": {
+    "name": "v24",
+    "positive_rows": [
+      {"t":30,"expected":"up","detected":"up","correct":true,"presence":0.8834,"suffix":0.7918,"margin":0.3559,"recording_layout":"top_left"},
+      {"t":150,"expected":"down","detected":"down","correct":true,"presence":0.7977,"suffix":0.8886,"margin":0.3087,"recording_layout":"full"},
+      {"t":223,"expected":"down","detected":"down","correct":true,"presence":0.8524,"suffix":0.6813,"margin":0.1667,"recording_layout":"embedded"},
+      {"t":300,"expected":"left","detected":"left","correct":true,"presence":0.6613,"suffix":0.7353,"margin":0.1389,"recording_layout":"full"},
+      {"t":400,"expected":"left","detected":"left","correct":true,"presence":0.8523,"suffix":0.6796,"margin":0.1086,"recording_layout":"embedded"}
+    ],
+    "negative_rows": [
+      {"t":10,"detected":null,"false_positive":false,"presence":0.1622,"suffix":0.2502,"margin":0.0004,"recording_layout":"full"},
+      {"t":60,"detected":null,"false_positive":false,"presence":0.3076,"suffix":0.4096,"margin":0.071,"recording_layout":"full"},
+      {"t":100,"detected":null,"false_positive":false,"presence":0.2561,"suffix":0.3986,"margin":0.1413,"recording_layout":"top_left"},
+      {"t":250,"detected":null,"false_positive":false,"presence":0.3084,"suffix":0.344,"margin":0.0244,"recording_layout":"top_left"},
+      {"t":280,"detected":null,"false_positive":false,"presence":0.3059,"suffix":0.2833,"margin":0.0019,"recording_layout":"embedded"},
+      {"t":350,"detected":null,"false_positive":false,"presence":0.1906,"suffix":0.0,"margin":0.0,"recording_layout":"full"},
+      {"t":500,"detected":null,"false_positive":false,"presence":0.1737,"suffix":0.2732,"margin":0.0266,"recording_layout":"top_left"},
+      {"t":590,"detected":null,"false_positive":false,"presence":0.2026,"suffix":0.2813,"margin":0.0132,"recording_layout":"full"},
+      {"t":600,"detected":null,"false_positive":false,"presence":0.3104,"suffix":0.2982,"margin":0.009,"recording_layout":"embedded"}
+    ],
+    "positive_correct":5,"positive_total":5,"false_positives":0,"negative_total":9
+  },
+  "v25": {
+    "name":"v25",
+    "positive_rows":[
+      {"t":84,"expected":"up","detected":"up","correct":true,"presence":0.9828,"suffix":0.9902,"margin":0.4787,"recording_layout":"embedded"},
+      {"t":85,"expected":"up","detected":"up","correct":true,"presence":0.9943,"suffix":0.9926,"margin":0.4811,"recording_layout":"embedded"},
+      {"t":90,"expected":"up","detected":"up","correct":true,"presence":0.9296,"suffix":0.9728,"margin":0.4624,"recording_layout":"embedded"},
+      {"t":92,"expected":"up","detected":"up","correct":true,"presence":0.9116,"suffix":0.9877,"margin":0.4715,"recording_layout":"embedded"},
+      {"t":106,"expected":"down","detected":"down","correct":true,"presence":0.8101,"suffix":0.8273,"margin":0.2419,"recording_layout":"embedded"},
+      {"t":107,"expected":"down","detected":"down","correct":true,"presence":0.8615,"suffix":0.8998,"margin":0.2895,"recording_layout":"embedded"},
+      {"t":138,"expected":"down","detected":"down","correct":true,"presence":0.9033,"suffix":0.829,"margin":0.2391,"recording_layout":"embedded"},
+      {"t":174,"expected":"left","detected":"left","correct":true,"presence":0.9162,"suffix":0.9759,"margin":0.3972,"recording_layout":"embedded"},
+      {"t":1072,"expected":"right","detected":"right","correct":true,"presence":0.8314,"suffix":0.7706,"margin":0.2322,"recording_layout":"embedded"},
+      {"t":1077,"expected":"right","detected":"right","correct":true,"presence":0.8788,"suffix":0.8686,"margin":0.2211,"recording_layout":"top_left"}
+    ],
+    "negative_rows":[
+      {"t":82,"detected":null,"false_positive":false,"presence":0.3084,"suffix":0.3196,"margin":0.0014,"recording_layout":"top_left"},
+      {"t":160,"detected":null,"false_positive":false,"presence":0.3076,"suffix":0.4096,"margin":0.0785,"recording_layout":"full"},
+      {"t":165,"detected":null,"false_positive":false,"presence":0.188,"suffix":0.2382,"margin":0.0261,"recording_layout":"top_left"},
+      {"t":250,"detected":null,"false_positive":false,"presence":0.3217,"suffix":0.3209,"margin":0.0013,"recording_layout":"full"},
+      {"t":500,"detected":null,"false_positive":false,"presence":0.1942,"suffix":0.2874,"margin":0.009,"recording_layout":"top_left"},
+      {"t":900,"detected":null,"false_positive":false,"presence":0.3076,"suffix":0.3126,"margin":0.0099,"recording_layout":"top_left"},
+      {"t":1085,"detected":null,"false_positive":false,"presence":0.177,"suffix":0.2575,"margin":0.0002,"recording_layout":"embedded"},
+      {"t":1110,"detected":null,"false_positive":false,"presence":0.3084,"suffix":0.3679,"margin":0.0554,"recording_layout":"top_left"}
+    ],
+    "positive_correct":10,"positive_total":10,"false_positives":0,"negative_total":8
+  },
+  "aggregate":{"positive_correct":15,"positive_total":15,"false_positives":0,"negative_total":17},
+  "detector_latency":{"n":160,"median_ms":7.861305999995238,"mean_ms":8.049958906249799,"p95_ms":9.97706410012142,"max_ms":13.727494000022489},
+  "broad_tesseract_latency":{"n":8,"median_ms":187.4389729999848,"mean_ms":197.2701367500065,"p95_ms":277.4846013000569,"max_ms":316.69191700007104,"median_speedup_x":23.8432358440313}
+}
