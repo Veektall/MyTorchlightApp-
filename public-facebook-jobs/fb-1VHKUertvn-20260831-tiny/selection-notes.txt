@@ -1,0 +1,1 @@
+Selection in progress. Source run: 33386823195. Source duration: 8096.438313 seconds. Goal: exactly five contiguous standalone social clips, straight cuts only, no captions/crop/effects/transitions/reordering.
