@@ -1,0 +1,133 @@
+name: Public Facebook Straight Cut Packager
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: public-facebook-cut-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  cut:
+    if: github.actor == github.repository_owner && startsWith(github.event.issue.title, 'public-facebook-cut:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Parse request
+        id: req
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re, pathlib
+          data=json.loads(os.environ['BODY'])
+          job=data['job_id'].strip(); run_id=int(data['source_run_id']); clips=data['clips']
+          if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}', job): raise SystemExit('invalid job_id')
+          if len(clips)!=5: raise SystemExit('exactly five clips required')
+          for i,c in enumerate(clips,1):
+              for k in ('start','end','filename'): 
+                  if k not in c: raise SystemExit(f'clip {i} missing {k}')
+              if not re.fullmatch(r'[A-Za-z0-9._-]+\.mp4', c['filename']): raise SystemExit(f'invalid filename {i}')
+          pathlib.Path('/tmp/cuts.json').write_text(json.dumps(clips),encoding='utf-8')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'job_id={job}\nsource_run_id={run_id}\n')
+          PY
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg unzip
+
+      - name: Download verified source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+          SOURCE_RUN_ID: ${{ steps.req.outputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          ART_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts" --jq ".artifacts[] | select(.name == \"source-$JOB_ID\") | .id" | head -n1)"
+          test -n "$ART_ID"
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ART_ID/zip" \
+            -o /tmp/source-artifact.zip
+          mkdir -p /tmp/source-artifact
+          unzip -q /tmp/source-artifact.zip -d /tmp/source-artifact
+          SRC="$(find /tmp/source-artifact -type f -name 'source.mp4' -size +0c | head -n1)"
+          test -n "$SRC"
+          cp "$SRC" /tmp/source.mp4
+          ffprobe -v error /tmp/source.mp4 >/dev/null
+
+      - name: Create five contiguous straight cuts
+        run: |
+          set -euo pipefail
+          mkdir -p out/clips out/qc
+          python - <<'PY'
+          import json, subprocess, pathlib, re
+          clips=json.load(open('/tmp/cuts.json'))
+          def sec(x):
+              if isinstance(x,(int,float)): return float(x)
+              s=str(x).strip()
+              if re.fullmatch(r'\d+(?:\.\d+)?',s): return float(s)
+              p=[float(v) for v in s.split(':')]
+              if len(p)==3: return p[0]*3600+p[1]*60+p[2]
+              if len(p)==2: return p[0]*60+p[1]
+              raise ValueError(s)
+          manifest=[]
+          for i,c in enumerate(clips,1):
+              start,end=sec(c['start']),sec(c['end'])
+              if end <= start: raise SystemExit(f'bad range {i}')
+              dur=end-start
+              out=f"out/clips/{c['filename']}"
+              # Trim only. No crop, scale, captions, effects, transitions, EQ, denoise, or content reordering.
+              # A clean delivery encode gives frame-accurate boundaries while preserving original framing and content.
+              cmd=['ffmpeg','-y','-v','error','-ss',f'{start:.3f}','-i','/tmp/source.mp4','-t',f'{dur:.3f}',
+                   '-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','18','-pix_fmt','yuv420p',
+                   '-c:a','aac','-b:a','192k','-movflags','+faststart','-map_metadata','0',out]
+              subprocess.run(cmd,check=True)
+              probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_format','-show_streams','-of','json',out]))
+              actual=float(probe['format']['duration'])
+              if actual < max(0.1,dur-0.15) or actual > dur+0.25:
+                  raise SystemExit(f'duration QC failed for {out}: expected {dur}, actual {actual}')
+              dec=subprocess.run(['ffmpeg','-v','error','-i',out,'-f','null','-'],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True)
+              if dec.returncode != 0 or dec.stderr.strip():
+                  raise SystemExit(f'decode QC failed for {out}: {dec.stderr[-1000:]}')
+              manifest.append({'index':i,'filename':c['filename'],'start_seconds':start,'end_seconds':end,'duration_seconds':actual})
+          pathlib.Path('out/qc/manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+          test "$(find out/clips -maxdepth 1 -type f -name '*.mp4' | wc -l)" -eq 5
+          sha256sum out/clips/*.mp4 > out/qc/SHA256SUMS.txt
+
+      - name: Upload five social-ready clips as one ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: facebook-viral-clips-${{ steps.req.outputs.job_id }}
+          path: out/clips/*.mp4
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Upload QC report separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: facebook-viral-clips-qc-${{ steps.req.outputs.job_id }}
+          path: out/qc/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Report result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Straight-cut packager finished with status: ${{ job.status }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
