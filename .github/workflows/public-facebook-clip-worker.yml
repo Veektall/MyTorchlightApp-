@@ -17,7 +17,7 @@ jobs:
   ingest:
     if: github.actor == github.repository_owner && startsWith(github.event.issue.title, 'public-facebook-clips:')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,8 +44,29 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade 'yt-dlp[default,curl-cffi]' fdown-api
+          python -m pip install -q --upgrade pip 'yt-dlp[default,curl-cffi]' fdown-api faster-whisper
+
+      - name: Resolve Facebook metadata
+        env:
+          URL: ${{ steps.req.outputs.url }}
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set +e
+          mkdir -p "work/$JOB_ID" "out/$JOB_ID"
+          yt-dlp --skip-download --dump-single-json "$URL" > "out/$JOB_ID/facebook-meta-full.json" 2>"out/$JOB_ID/meta.log"
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            yt-dlp --impersonate chrome --skip-download --dump-single-json "$URL" > "out/$JOB_ID/facebook-meta-full.json" 2>>"out/$JOB_ID/meta.log"
+          fi
+          python - <<'PY'
+          import json, os, pathlib
+          j=os.environ['JOB_ID']; p=pathlib.Path(f'out/{j}/facebook-meta-full.json')
+          try: m=json.loads(p.read_text())
+          except Exception: m={}
+          keep={k:m.get(k) for k in ['id','title','description','uploader','uploader_id','timestamp','webpage_url','duration']}
+          pathlib.Path(f'out/{j}/facebook-meta.json').write_text(json.dumps(keep,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          exit 0
 
       - name: Download exact public source
         env:
@@ -76,7 +97,7 @@ jobs:
           PY
             then ok=1; fi
           fi
-          SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -n1 || true)"
+          SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -1 || true)"
           test "$ok" -eq 1; test -n "$SRC"; test -s "$SRC"
           if [ "$SRC" != "work/$JOB_ID/source.mp4" ]; then
             ffmpeg -y -v error -i "$SRC" -map 0 -c copy "work/$JOB_ID/source.mp4" || ffmpeg -y -v error -i "$SRC" -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k "work/$JOB_ID/source.mp4"
@@ -84,6 +105,28 @@ jobs:
           test -s "work/$JOB_ID/source.mp4"
           ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/source.mp4" > "out/$JOB_ID/ffprobe.json"
           sha256sum "work/$JOB_ID/source.mp4" > "out/$JOB_ID/SHA256SUMS.txt"
+
+      - name: Timestamped analysis transcript
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          ffmpeg -y -v error -i "work/$JOB_ID/source.mp4" -vn -ac 1 -ar 16000 "work/$JOB_ID/audio.wav"
+          python - <<'PY'
+          import os
+          from faster_whisper import WhisperModel
+          j=os.environ['JOB_ID']
+          m=WhisperModel('tiny.en',device='cpu',compute_type='int8')
+          segs,_=m.transcribe(f'work/{j}/audio.wav',vad_filter=True,beam_size=2)
+          def ts(s):
+              h=int(s//3600); s-=h*3600; mi=int(s//60); s-=mi*60; return f'{h:02d}:{mi:02d}:{s:06.3f}'
+          with open(f'out/{j}/transcript.txt','w',encoding='utf-8') as f:
+              for x in segs:
+                  t=' '.join(x.text.split())
+                  if t: f.write(f'[{ts(x.start)} --> {ts(x.end)}] {t}\n')
+          open(f'out/{j}/transcript-source.txt','w').write('faster-whisper-tiny.en\n')
+          PY
+          test -s "out/$JOB_ID/transcript.txt"
 
       - name: Build source manifest
         env:
@@ -93,7 +136,7 @@ jobs:
           python - <<'PY'
           import json,os,pathlib
           j=os.environ['JOB_ID']; p=json.load(open(f'out/{j}/ffprobe.json')); fmt=p['format']
-          d={'job_id':j,'source_url':os.environ['URL'],'duration_seconds':float(fmt.get('duration',0)),'size_bytes':int(fmt.get('size',0)),'source_sha256':open(f'out/{j}/SHA256SUMS.txt').read().split()[0],'workflow_run_id':os.environ['GITHUB_RUN_ID']}
+          d={'job_id':j,'source_url':os.environ['URL'],'duration_seconds':float(fmt.get('duration',0)),'size_bytes':int(fmt.get('size',0)),'source_sha256':open(f'out/{j}/SHA256SUMS.txt').read().split()[0],'transcript_source':'faster-whisper-tiny.en','workflow_run_id':os.environ['GITHUB_RUN_ID']}
           pathlib.Path(f'out/{j}/manifest.json').write_text(json.dumps(d,indent=2),encoding='utf-8')
           PY
 
@@ -106,11 +149,12 @@ jobs:
             out/${{ steps.req.outputs.job_id }}/ffprobe.json
             out/${{ steps.req.outputs.job_id }}/SHA256SUMS.txt
             out/${{ steps.req.outputs.job_id }}/manifest.json
+            out/${{ steps.req.outputs.job_id }}/facebook-meta.json
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
 
-      - name: Publish source metadata
+      - name: Publish analysis package
         env:
           JOB_ID: ${{ steps.req.outputs.job_id }}
         run: |
@@ -120,8 +164,11 @@ jobs:
           cp "out/$JOB_ID/ffprobe.json" "$D/ffprobe.json"
           cp "out/$JOB_ID/SHA256SUMS.txt" "$D/SHA256SUMS.txt"
           cp "out/$JOB_ID/download.log" "$D/download.log"
+          cp "out/$JOB_ID/facebook-meta.json" "$D/facebook-meta.json"
+          cp "out/$JOB_ID/transcript.txt" "$D/transcript.txt"
+          cp "out/$JOB_ID/transcript-source.txt" "$D/transcript-source.txt"
           git config user.name chatgpt-actions; git config user.email actions@users.noreply.github.com
-          git add "$D"; git commit -m "Publish verified Facebook source metadata $JOB_ID"
+          git add "$D"; git commit -m "Publish Facebook analysis package $JOB_ID"
           git pull --rebase origin "$GITHUB_REF_NAME"
           git push origin HEAD:"$GITHUB_REF_NAME"
 
@@ -131,4 +178,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           JOB_ID: ${{ steps.req.outputs.job_id }}
-        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Public Facebook source-only ingest finished with status: ${{ job.status }}. Job: $JOB_ID. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Public Facebook analysis finished with status: ${{ job.status }}. Job: $JOB_ID. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
