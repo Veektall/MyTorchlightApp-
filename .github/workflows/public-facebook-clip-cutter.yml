@@ -30,14 +30,14 @@ jobs:
           data=json.loads(os.environ['BODY'])
           job=data['job_id'].strip(); run_id=int(data['source_run_id']); clips=data['clips']
           if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}', job): raise SystemExit('invalid job_id')
-          if len(clips)!=5: raise SystemExit('exactly five clips required')
+          if not (1 <= len(clips) <= 10): raise SystemExit('between one and ten clips required')
           for i,c in enumerate(clips,1):
-              for k in ('start','end','filename'): 
+              for k in ('start','end','filename'):
                   if k not in c: raise SystemExit(f'clip {i} missing {k}')
               if not re.fullmatch(r'[A-Za-z0-9._-]+\.mp4', c['filename']): raise SystemExit(f'invalid filename {i}')
           pathlib.Path('/tmp/cuts.json').write_text(json.dumps(clips),encoding='utf-8')
           with open(os.environ['GITHUB_OUTPUT'],'a') as f:
-              f.write(f'job_id={job}\nsource_run_id={run_id}\n')
+              f.write(f'job_id={job}\nsource_run_id={run_id}\nclip_count={len(clips)}\n')
           PY
 
       - name: Install FFmpeg
@@ -67,7 +67,7 @@ jobs:
           cp "$SRC" /tmp/source.mp4
           ffprobe -v error /tmp/source.mp4 >/dev/null
 
-      - name: Create five contiguous straight cuts
+      - name: Create contiguous straight cuts
         run: |
           set -euo pipefail
           mkdir -p out/clips out/qc
@@ -89,7 +89,6 @@ jobs:
               dur=end-start
               out=f"out/clips/{c['filename']}"
               # Trim only. No crop, scale, captions, effects, transitions, EQ, denoise, or content reordering.
-              # A clean delivery encode gives frame-accurate boundaries while preserving original framing and content.
               cmd=['ffmpeg','-y','-v','error','-ss',f'{start:.3f}','-i','/tmp/source.mp4','-t',f'{dur:.3f}',
                    '-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','medium','-crf','18','-pix_fmt','yuv420p',
                    '-c:a','aac','-b:a','192k','-movflags','+faststart','-map_metadata','0',out]
@@ -104,10 +103,10 @@ jobs:
               manifest.append({'index':i,'filename':c['filename'],'start_seconds':start,'end_seconds':end,'duration_seconds':actual})
           pathlib.Path('out/qc/manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
           PY
-          test "$(find out/clips -maxdepth 1 -type f -name '*.mp4' | wc -l)" -eq 5
+          test "$(find out/clips -maxdepth 1 -type f -name '*.mp4' | wc -l)" -eq "${{ steps.req.outputs.clip_count }}"
           sha256sum out/clips/*.mp4 > out/qc/SHA256SUMS.txt
 
-      - name: Upload five social-ready clips as one ZIP artifact
+      - name: Upload social-ready clips as one ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: facebook-viral-clips-${{ steps.req.outputs.job_id }}
