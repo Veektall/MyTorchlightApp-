@@ -1,0 +1,12 @@
+{
+  "job_id": "sermon-19F2-19KG-20260906",
+  "url": "https://www.facebook.com/share/v/19KGedPbvL/",
+  "clips": [
+    {"index": 1, "start": 60.710, "end": 126.650, "filename": "01_Peace_Is_A_Decision.mp4"},
+    {"index": 2, "start": 242.510, "end": 324.640, "filename": "02_Your_Friends_Determine_What_You_Become.mp4"},
+    {"index": 3, "start": 352.470, "end": 395.660, "filename": "03_Three_Ways_Through_A_Mountain.mp4"},
+    {"index": 4, "start": 3488.130, "end": 3554.180, "filename": "04_Invent_Your_Future.mp4"},
+    {"index": 5, "start": 3582.980, "end": 3617.310, "filename": "05_Create_A_New_Vision.mp4"},
+    {"index": 6, "start": 3946.480, "end": 4010.130, "filename": "06_God_Empowers_You_To_Do_Something_New.mp4"}
+  ]
+}
