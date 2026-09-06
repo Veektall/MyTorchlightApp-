@@ -1,0 +1,172 @@
+name: Public Facebook Tightened Clip Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.trigger/facebook-tightened-cuts.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse request
+        id: req
+        run: |
+          python - <<'PY'
+          import json,re,os
+          d=json.load(open('.trigger/facebook-tightened-cuts.json'))
+          job=d['job_id'].strip(); url=d['url'].strip(); clips=d['clips']
+          if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',job): raise SystemExit('bad job_id')
+          if not url.startswith('https://www.facebook.com/'): raise SystemExit('Facebook URL required')
+          if len(clips)!=6: raise SystemExit('exactly six clips required')
+          if not re.fullmatch(r'[0-9a-f]{64}',d['expected_source_sha256']): raise SystemExit('bad source hash')
+          for i,c in enumerate(clips,1):
+              if c['index']!=i or float(c['end'])<=float(c['start']): raise SystemExit('bad clip range')
+              if not re.fullmatch(r'[A-Za-z0-9._-]+\.mp4',c['filename']): raise SystemExit('bad filename')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'job_id={job}\nurl={url}\n')
+          PY
+
+      - name: Install media tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg zip
+          python -m pip install -q --upgrade pip 'yt-dlp[default,curl-cffi]' fdown-api
+
+      - name: Download and verify exact Facebook source
+        env:
+          URL: ${{ steps.req.outputs.url }}
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "work/$JOB_ID" "out/$JOB_ID/clips"
+          LOG="out/$JOB_ID/download.log"; : > "$LOG"; ok=0
+          if yt-dlp --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >>"$LOG" 2>&1; then ok=1; fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            if yt-dlp --impersonate chrome --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >>"$LOG" 2>&1; then ok=1; fi
+          fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            if python - <<'PY' >>"$LOG" 2>&1
+          import os
+          from fdown_api import Fdown
+          f=Fdown(timeout=90); links=f.get_links(os.environ['URL']); j=os.environ['JOB_ID']
+          q='best' if getattr(links,'hdlink',None) else 'normal'
+          f.download_video(links,quality=q,filename='source.mp4',dir=f'work/{j}',progress_bar=False,quiet=True)
+          PY
+            then ok=1; fi
+          fi
+          SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -1 || true)"
+          test "$ok" -eq 1; test -n "$SRC"; test -s "$SRC"
+          if [ "$SRC" != "work/$JOB_ID/source.mp4" ]; then
+            ffmpeg -y -v error -i "$SRC" -map 0 -c copy "work/$JOB_ID/source.mp4"
+          fi
+          ACTUAL="$(sha256sum "work/$JOB_ID/source.mp4" | awk '{print $1}')"
+          EXPECTED="$(python -c 'import json; print(json.load(open(".trigger/facebook-tightened-cuts.json"))["expected_source_sha256"])')"
+          echo "$ACTUAL  work/$JOB_ID/source.mp4" | tee "out/$JOB_ID/source-sha256.txt"
+          test "$ACTUAL" = "$EXPECTED"
+          ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/source.mp4" > "out/$JOB_ID/source-ffprobe.json"
+
+      - name: Remove dead air and render six clips
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess,pathlib,os,re,math
+          d=json.load(open('.trigger/facebook-tightened-cuts.json')); j=os.environ['JOB_ID']
+          src=f'work/{j}/source.mp4'; outdir=pathlib.Path(f'out/{j}/clips'); outdir.mkdir(parents=True,exist_ok=True)
+          manifest=[]
+          SILENCE_DB='-35dB'; MIN_SILENCE=0.55; EDGE=0.06
+
+          def detect(start,dur):
+              cmd=['ffmpeg','-hide_banner','-nostats','-ss',f'{start:.3f}','-i',src,'-t',f'{dur:.3f}','-vn','-af',f'silencedetect=noise={SILENCE_DB}:d={MIN_SILENCE}','-f','null','-']
+              p=subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,text=True,check=False)
+              starts=[]; intervals=[]
+              for line in p.stderr.splitlines():
+                  m=re.search(r'silence_start: ([0-9.]+)',line)
+                  if m: starts.append(float(m.group(1)))
+                  m=re.search(r'silence_end: ([0-9.]+)',line)
+                  if m and starts:
+                      s=starts.pop(0); e=float(m.group(1)); intervals.append([max(0,s),min(dur,e)])
+              if starts: intervals.append([max(0,starts.pop(0)),dur])
+              return intervals
+
+          def keep_from_silences(dur,sils):
+              # Remove only the interior of detected dead-air spans; retain ~60 ms at each side so word attacks/tails are not clipped.
+              removals=[]
+              for s,e in sils:
+                  rs=s+EDGE; re_=e-EDGE
+                  if re_-rs >= 0.20: removals.append([rs,re_])
+              # merge overlapping removals
+              merged=[]
+              for s,e in sorted(removals):
+                  if merged and s <= merged[-1][1]+0.01: merged[-1][1]=max(merged[-1][1],e)
+                  else: merged.append([s,e])
+              keeps=[]; cur=0.0
+              for s,e in merged:
+                  if s-cur > 0.08: keeps.append([cur,s])
+                  cur=max(cur,e)
+              if dur-cur > 0.08: keeps.append([cur,dur])
+              return keeps,merged
+
+          for c in d['clips']:
+              start=float(c['start']); end=float(c['end']); dur=end-start
+              sils=detect(start,dur); keeps,removed=keep_from_silences(dur,sils)
+              if not keeps: raise SystemExit(f'no content after silence removal: {c["filename"]}')
+              parts=[]; labels=[]
+              for n,(a,b) in enumerate(keeps):
+                  parts += [f'[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{n}]', f'[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{n}]']
+                  labels.append(f'[v{n}][a{n}]')
+              fc=';'.join(parts)+';' + ''.join(labels)+f'concat=n={len(keeps)}:v=1:a=1[outv][outa]'
+              out=str(outdir/c['filename'])
+              cmd=['ffmpeg','-y','-v','error','-ss',f'{start:.3f}','-i',src,'-t',f'{dur:.3f}','-filter_complex',fc,'-map','[outv]','-map','[outa]','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',out]
+              subprocess.run(cmd,check=True)
+              probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_format','-show_streams','-of','json',out]))
+              actual=float(probe['format']['duration'])
+              expected=sum(b-a for a,b in keeps)
+              if abs(actual-expected)>0.45: raise SystemExit(f'duration mismatch {c["filename"]}: {actual} vs {expected}')
+              streams=probe['streams']
+              if not any(s.get('codec_type')=='video' for s in streams) or not any(s.get('codec_type')=='audio' for s in streams): raise SystemExit('missing A/V stream')
+              v=next(s for s in streams if s.get('codec_type')=='video')
+              if (v.get('width'),v.get('height')) != (1280,720): raise SystemExit(f'unexpected resolution {v.get("width")}x{v.get("height")}')
+              subprocess.run(['ffmpeg','-v','error','-i',out,'-f','null','-'],check=True)
+              removed_seconds=dur-expected
+              manifest.append({**c,'source_duration':dur,'final_duration':actual,'removed_dead_air_seconds':removed_seconds,'silence_intervals_detected':sils,'removed_intervals':removed,'kept_intervals':keeps})
+          pathlib.Path(f'out/{j}/clips-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+
+      - name: Package and verify ZIP
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          cd "out/$JOB_ID/clips"
+          zip -0 -j "../${JOB_ID}_6_tightened_viral_clips.zip" ./*.mp4
+          cd - >/dev/null
+          test "$(unzip -Z1 "out/$JOB_ID/${JOB_ID}_6_tightened_viral_clips.zip" | grep -c '\.mp4$')" -eq 6
+          unzip -t "out/$JOB_ID/${JOB_ID}_6_tightened_viral_clips.zip"
+          sha256sum "out/$JOB_ID/${JOB_ID}_6_tightened_viral_clips.zip" > "out/$JOB_ID/final-zip-sha256.txt"
+
+      - name: Upload final deliverable
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-${{ steps.req.outputs.job_id }}
+          path: |
+            out/${{ steps.req.outputs.job_id }}/${{ steps.req.outputs.job_id }}_6_tightened_viral_clips.zip
+            out/${{ steps.req.outputs.job_id }}/clips-manifest.json
+            out/${{ steps.req.outputs.job_id }}/source-sha256.txt
+            out/${{ steps.req.outputs.job_id }}/source-ffprobe.json
+            out/${{ steps.req.outputs.job_id }}/final-zip-sha256.txt
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
