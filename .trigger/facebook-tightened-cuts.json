@@ -1,0 +1,13 @@
+{
+  "job_id": "sermon-19F2-19KG-20260906-set3-tight",
+  "url": "https://www.facebook.com/share/v/19KGedPbvL/",
+  "expected_source_sha256": "2e661f5c77d2c9e3b8169a0ff01428c046c3c25ae9dbe5916085b5718127c8ab",
+  "clips": [
+    {"index": 1, "start": 581.140, "end": 663.910, "filename": "01_When_The_Old_Method_Stops_Working_Create_A_New_Idea.mp4"},
+    {"index": 2, "start": 926.140, "end": 1034.000, "filename": "02_Grace_Is_Not_Condemnation.mp4"},
+    {"index": 3, "start": 2188.720, "end": 2218.670, "filename": "03_When_One_Formula_Fails_Try_Another.mp4"},
+    {"index": 4, "start": 2604.460, "end": 2710.980, "filename": "04_Stop_Forcing_Old_Methods_On_A_New_Generation.mp4"},
+    {"index": 5, "start": 2868.100, "end": 2902.630, "filename": "05_Renew_Your_Mind.mp4"},
+    {"index": 6, "start": 3768.430, "end": 3884.430, "filename": "06_Change_With_The_Times_Or_Get_Left_Behind.mp4"}
+  ]
+}
