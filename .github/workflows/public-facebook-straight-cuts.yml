@@ -1,0 +1,124 @@
+name: Public Facebook Straight Cut Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.trigger/facebook-cuts.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse request
+        id: req
+        run: |
+          python - <<'PY'
+          import json,re,os
+          d=json.load(open('.trigger/facebook-cuts.json'))
+          job=d['job_id'].strip(); url=d['url'].strip(); clips=d['clips']
+          if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',job): raise SystemExit('bad job_id')
+          if not url.startswith('https://www.facebook.com/'): raise SystemExit('Facebook URL required')
+          if len(clips)!=6: raise SystemExit('exactly six clips required')
+          for i,c in enumerate(clips,1):
+              if c['index']!=i or float(c['end'])<=float(c['start']): raise SystemExit('bad clip range')
+              if not re.fullmatch(r'[A-Za-z0-9._-]+\.mp4',c['filename']): raise SystemExit('bad filename')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'job_id={job}\nurl={url}\n')
+          PY
+
+      - name: Install media tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg zip
+          python -m pip install -q --upgrade pip 'yt-dlp[default,curl-cffi]' fdown-api
+
+      - name: Download exact Facebook source
+        env:
+          URL: ${{ steps.req.outputs.url }}
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "work/$JOB_ID" "out/$JOB_ID/clips"
+          LOG="out/$JOB_ID/download.log"; : > "$LOG"; ok=0
+          if yt-dlp --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >>"$LOG" 2>&1; then ok=1; fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            if yt-dlp --impersonate chrome --no-playlist --merge-output-format mp4 -f 'bv*+ba/b' -o "work/$JOB_ID/source.%(ext)s" "$URL" >>"$LOG" 2>&1; then ok=1; fi
+          fi
+          if [ "$ok" -eq 0 ]; then
+            rm -f "work/$JOB_ID"/source.*
+            if python - <<'PY' >>"$LOG" 2>&1
+          import os
+          from fdown_api import Fdown
+          f=Fdown(timeout=90); links=f.get_links(os.environ['URL']); j=os.environ['JOB_ID']
+          q='best' if getattr(links,'hdlink',None) else 'normal'
+          f.download_video(links,quality=q,filename='source.mp4',dir=f'work/{j}',progress_bar=False,quiet=True)
+          PY
+            then ok=1; fi
+          fi
+          SRC="$(find "work/$JOB_ID" -maxdepth 1 -type f -name 'source.*' -size +0c | head -1 || true)"
+          test "$ok" -eq 1; test -n "$SRC"; test -s "$SRC"
+          if [ "$SRC" != "work/$JOB_ID/source.mp4" ]; then
+            ffmpeg -y -v error -i "$SRC" -map 0 -c copy "work/$JOB_ID/source.mp4"
+          fi
+          sha256sum "work/$JOB_ID/source.mp4" | tee "out/$JOB_ID/source-sha256.txt"
+          ffprobe -v error -show_format -show_streams -of json "work/$JOB_ID/source.mp4" > "out/$JOB_ID/source-ffprobe.json"
+
+      - name: Make six straight trims
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,subprocess,pathlib,os
+          d=json.load(open('.trigger/facebook-cuts.json')); j=os.environ['JOB_ID']
+          src=f'work/{j}/source.mp4'; outdir=pathlib.Path(f'out/{j}/clips'); outdir.mkdir(parents=True,exist_ok=True)
+          manifest=[]
+          for c in d['clips']:
+              start=float(c['start']); end=float(c['end']); dur=end-start
+              out=str(outdir/c['filename'])
+              # Exact contiguous trim only: no crop, scale, overlays, captions, transitions, EQ, or content rearrangement.
+              cmd=['ffmpeg','-y','-v','error','-ss',f'{start:.3f}','-i',src,'-t',f'{dur:.3f}','-map','0:v:0','-map','0:a:0?','-c:v','libx264','-preset','fast','-crf','18','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',out]
+              subprocess.run(cmd,check=True)
+              probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_format','-show_streams','-of','json',out]))
+              actual=float(probe['format']['duration'])
+              if abs(actual-dur)>0.35: raise SystemExit(f'duration mismatch {c["filename"]}: {actual} vs {dur}')
+              streams=probe['streams'];
+              if not any(s.get('codec_type')=='video' for s in streams) or not any(s.get('codec_type')=='audio' for s in streams): raise SystemExit('missing A/V stream')
+              subprocess.run(['ffmpeg','-v','error','-i',out,'-f','null','-'],check=True)
+              manifest.append({**c,'requested_duration':dur,'actual_duration':actual})
+          pathlib.Path(f'out/{j}/clips-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+
+      - name: Package final ZIP
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          cd "out/$JOB_ID/clips"
+          zip -0 -j "../${JOB_ID}_6_viral_clips.zip" ./*.mp4
+          cd - >/dev/null
+          unzip -t "out/$JOB_ID/${JOB_ID}_6_viral_clips.zip"
+          sha256sum "out/$JOB_ID/${JOB_ID}_6_viral_clips.zip" > "out/$JOB_ID/final-zip-sha256.txt"
+
+      - name: Upload final deliverable
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-${{ steps.req.outputs.job_id }}
+          path: |
+            out/${{ steps.req.outputs.job_id }}/${{ steps.req.outputs.job_id }}_6_viral_clips.zip
+            out/${{ steps.req.outputs.job_id }}/clips-manifest.json
+            out/${{ steps.req.outputs.job_id }}/source-sha256.txt
+            out/${{ steps.req.outputs.job_id }}/source-ffprobe.json
+            out/${{ steps.req.outputs.job_id }}/final-zip-sha256.txt
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
