@@ -1,0 +1,9 @@
+{
+  "job_id": "fb-19F2bwY8Dn-20260906-part1",
+  "source_url": "https://www.facebook.com/share/v/19F2bwY8Dn/",
+  "duration_seconds": 971.210313,
+  "size_bytes": 113701140,
+  "source_sha256": "53fa92161657d21f44fa84a4ed94352e82eed5340ea8f032446a978f9c9ab750",
+  "transcript_source": "faster-whisper-tiny.en",
+  "workflow_run_id": "34036226320"
+}
