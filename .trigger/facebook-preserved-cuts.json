@@ -1,0 +1,14 @@
+{
+  "job_id": "sermon-14syzrSL95N-20260913",
+  "source_run_id": 34769296557,
+  "artifact_name": "source-fb-14syzrSL95N-20260913",
+  "expected_source_sha256": "bb21323fb7727baad5a78331ba3278788c71d2dae2272e8e0e734fff238fc5da",
+  "clips": [
+    {"index": 1, "start": 2372.200, "end": 2417.950, "filename": "01_Something_Clean_Cannot_Stain_You.mp4"},
+    {"index": 2, "start": 2915.700, "end": 2982.200, "filename": "02_Four_Lepers_Turned_To_The_Lord.mp4"},
+    {"index": 3, "start": 3228.200, "end": 3261.450, "filename": "03_You_Only_Know_The_Part_Of_God_He_Revealed.mp4"},
+    {"index": 4, "start": 4316.400, "end": 4358.850, "filename": "04_Title_Does_Not_Determine_Your_Relationship_With_Jesus.mp4"},
+    {"index": 5, "start": 4860.000, "end": 4896.100, "filename": "05_Put_On_The_Whole_Armor_Of_God.mp4"},
+    {"index": 6, "start": 5689.950, "end": 5724.250, "filename": "06_Why_The_Name_Of_Jesus_Never_Fails.mp4"}
+  ]
+}
