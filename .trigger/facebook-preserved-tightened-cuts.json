@@ -1,0 +1,14 @@
+{
+  "job_id": "sermon-14syzrSL95N-20260913-pack2-tight",
+  "source_run_id": 34769296557,
+  "artifact_name": "source-fb-14syzrSL95N-20260913",
+  "expected_source_sha256": "bb21323fb7727baad5a78331ba3278788c71d2dae2272e8e0e734fff238fc5da",
+  "clips": [
+    {"index":1,"raw_start":1992.84,"raw_end":2054.61,"filename":"01_Evil_Plans_Do_Not_Stay_Hidden_From_God.mp4","segments":[{"start":1992.84,"end":1997.375},{"start":2002.235,"end":2008.995},{"start":2012.235,"end":2020.755},{"start":2025.235,"end":2030.235},{"start":2033.235,"end":2035.675},{"start":2037.235,"end":2052.715},{"start":2053.515,"end":2054.61}]},
+    {"index":2,"raw_start":2250.34,"raw_end":2311.22,"filename":"02_Mount_Zion_Is_Different.mp4","segments":[{"start":2250.34,"end":2269.055},{"start":2270.235,"end":2290.275},{"start":2290.915,"end":2295.235},{"start":2298.235,"end":2311.22}]},
+    {"index":3,"raw_start":2673.34,"raw_end":2753.49,"filename":"03_When_Tribulation_Comes_Run_To_The_Lord.mp4","segments":[{"start":2673.34,"end":2679.035},{"start":2679.735,"end":2680.975},{"start":2684.735,"end":2687.735},{"start":2688.735,"end":2702.375},{"start":2706.735,"end":2719.895},{"start":2723.235,"end":2725.355},{"start":2728.735,"end":2736.535},{"start":2737.435,"end":2743.675},{"start":2746.235,"end":2753.49}]},
+    {"index":4,"raw_start":3059.34,"raw_end":3135.07,"filename":"04_There_Is_A_Stronghold_Above_All_Strongholds.mp4","segments":[{"start":3059.34,"end":3064.395},{"start":3071.235,"end":3077.635},{"start":3081.735,"end":3091.375},{"start":3097.735,"end":3099.055},{"start":3101.235,"end":3103.435},{"start":3105.235,"end":3114.075},{"start":3119.735,"end":3135.07}]},
+    {"index":5,"raw_start":5173.61,"raw_end":5203.45,"filename":"05_What_Deliverance_From_God_Really_Means.mp4","segments":[{"start":5173.61,"end":5203.45}]},
+    {"index":6,"raw_start":5328.51,"raw_end":5372.67,"filename":"06_The_Gates_Of_Hell_Will_Not_Stop_The_Church.mp4","segments":[{"start":5328.51,"end":5345.367},{"start":5348.507,"end":5349.987},{"start":5352.007,"end":5372.67}]}
+  ]
+}
