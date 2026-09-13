@@ -1,0 +1,70 @@
+name: Public Facebook Title Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.trigger/facebook-title-scan.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse request
+        id: req
+        run: |
+          python - <<'PY'
+          import json,re,os
+          d=json.load(open('.trigger/facebook-title-scan.json'))
+          j=d['job_id']; run_id=str(d['source_run_id']); artifact=d['artifact_name']; times=d['times']
+          if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',j): raise SystemExit('bad job id')
+          if not run_id.isdigit(): raise SystemExit('bad run id')
+          if not artifact.startswith('source-'): raise SystemExit('bad artifact')
+          if not isinstance(times,list) or not (1 <= len(times) <= 12): raise SystemExit('bad times')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'job_id={j}\nrun_id={run_id}\nartifact={artifact}\n')
+          PY
+      - name: Download preserved source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.req.outputs.artifact }}
+          path: source-artifact
+          run-id: ${{ steps.req.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Extract title-check frames
+        env:
+          JOB_ID: ${{ steps.req.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          SRC="$(find source-artifact -type f -name 'source.mp4' -size +0c | head -1)"
+          test -n "$SRC"; test -s "$SRC"
+          mkdir -p "out/$JOB_ID"
+          python - <<'PY'
+          import json,subprocess,os,pathlib
+          d=json.load(open('.trigger/facebook-title-scan.json')); j=os.environ['JOB_ID']
+          src=subprocess.check_output("find source-artifact -type f -name 'source.mp4' -size +0c | head -1",shell=True,text=True).strip()
+          manifest=[]
+          for i,t in enumerate(d['times'],1):
+              out=f'out/{j}/{i:02d}_{int(float(t)):05d}s.jpg'
+              subprocess.run(['ffmpeg','-y','-v','error','-ss',str(float(t)),'-i',src,'-frames:v','1','-q:v','2',out],check=True)
+              manifest.append({'index':i,'time_seconds':float(t),'file':pathlib.Path(out).name})
+          pathlib.Path(f'out/{j}/frames.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+      - name: Upload frames
+        uses: actions/upload-artifact@v4
+        with:
+          name: title-scan-${{ steps.req.outputs.job_id }}
+          path: out/${{ steps.req.outputs.job_id }}/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
