@@ -1,14 +1,44 @@
 {
-  "job_id": "sermon-14syzrSL95N-20260913",
-  "source_run_id": 34769296557,
-  "artifact_name": "source-fb-14syzrSL95N-20260913",
-  "expected_source_sha256": "bb21323fb7727baad5a78331ba3278788c71d2dae2272e8e0e734fff238fc5da",
+  "job_id": "sermon-14mbm3PaZEM-20260920",
+  "source_run_id": 35503180296,
+  "artifact_name": "source-fb-14mbm3PaZEM-20260920",
+  "expected_source_sha256": "831367bbe618abbf802e467b01aaea07d443563d6f268c6215deb8107b7dd1d1",
   "clips": [
-    {"index": 1, "start": 2372.200, "end": 2417.950, "filename": "01_Something_Clean_Cannot_Stain_You.mp4"},
-    {"index": 2, "start": 2915.700, "end": 2982.200, "filename": "02_Four_Lepers_Turned_To_The_Lord.mp4"},
-    {"index": 3, "start": 3228.200, "end": 3261.450, "filename": "03_You_Only_Know_The_Part_Of_God_He_Revealed.mp4"},
-    {"index": 4, "start": 4316.400, "end": 4358.850, "filename": "04_Title_Does_Not_Determine_Your_Relationship_With_Jesus.mp4"},
-    {"index": 5, "start": 4860.000, "end": 4896.100, "filename": "05_Put_On_The_Whole_Armor_Of_God.mp4"},
-    {"index": 6, "start": 5689.950, "end": 5724.250, "filename": "06_Why_The_Name_Of_Jesus_Never_Fails.mp4"}
+    {
+      "index": 1,
+      "start": 1661.45,
+      "end": 1711.95,
+      "filename": "01_Apply_The_Word_Dont_Just_Hear_It.mp4"
+    },
+    {
+      "index": 2,
+      "start": 1953.45,
+      "end": 2010.95,
+      "filename": "02_Why_People_Get_Deceived_In_Church.mp4"
+    },
+    {
+      "index": 3,
+      "start": 2770.7,
+      "end": 2858.85,
+      "filename": "03_Keep_Your_Vows_To_God.mp4"
+    },
+    {
+      "index": 4,
+      "start": 3014.2,
+      "end": 3047.15,
+      "filename": "04_Business_Has_Profit_And_Loss.mp4"
+    },
+    {
+      "index": 5,
+      "start": 3204.2,
+      "end": 3273.99,
+      "filename": "05_Discover_Your_Foolishness_Before_Others_Do.mp4"
+    },
+    {
+      "index": 6,
+      "start": 3683.2,
+      "end": 3733.05,
+      "filename": "06_Live_According_To_Your_Pocket.mp4"
+    }
   ]
 }
