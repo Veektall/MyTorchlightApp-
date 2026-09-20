@@ -1,0 +1,74 @@
+{
+  "job_id": "foolish-selected-2-buffered-tight-20260920",
+  "source_run_id": 35503180296,
+  "artifact_name": "source-fb-14mbm3PaZEM-20260920",
+  "expected_source_sha256": "831367bbe618abbf802e467b01aaea07d443563d6f268c6215deb8107b7dd1d1",
+  "clips": [
+    {
+      "index": 1,
+      "filename": "01_Keep_Your_Vows_To_God_FINAL.mp4",
+      "raw_start": 2770.7,
+      "original_end": 2858.85,
+      "raw_end": 2863.85,
+      "segments": [
+        {
+          "start": 2770.7,
+          "end": 2783.153
+        },
+        {
+          "start": 2786.133,
+          "end": 2795.933
+        },
+        {
+          "start": 2799.633,
+          "end": 2802.393
+        },
+        {
+          "start": 2803.633,
+          "end": 2807.433
+        },
+        {
+          "start": 2808.633,
+          "end": 2813.313
+        },
+        {
+          "start": 2817.633,
+          "end": 2824.473
+        },
+        {
+          "start": 2827.133,
+          "end": 2836.133
+        },
+        {
+          "start": 2838.633,
+          "end": 2840.673
+        },
+        {
+          "start": 2842.753,
+          "end": 2860.033
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "filename": "02_Live_According_To_Your_Pocket_FINAL.mp4",
+      "raw_start": 3683.2,
+      "original_end": 3733.05,
+      "raw_end": 3738.05,
+      "segments": [
+        {
+          "start": 3683.2,
+          "end": 3708.953
+        },
+        {
+          "start": 3710.733,
+          "end": 3714.813
+        },
+        {
+          "start": 3722.633,
+          "end": 3736.193
+        }
+      ]
+    }
+  ]
+}
